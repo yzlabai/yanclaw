@@ -1,13 +1,11 @@
 {
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "composite": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "types": ["bun-types"]
-  },
-  "include": ["src"],
-  "references": [
-    { "path": "../shared" }
-  ]
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"composite": true,
+		"outDir": "dist",
+		"rootDir": "src",
+		"types": ["bun-types"]
+	},
+	"include": ["src"],
+	"references": [{ "path": "../shared" }]
 }

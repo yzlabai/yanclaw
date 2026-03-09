@@ -1,15 +1,21 @@
 {
-  "name": "yanclaw",
-  "version": "0.1.0",
-  "private": true,
-  "workspaces": ["packages/*", "plugins/*"],
-  "scripts": {
-    "dev": "bun run --filter @yanclaw/web dev",
-    "dev:server": "bun run --filter @yanclaw/server dev",
-    "dev:tauri": "bunx tauri dev",
-    "build": "bun run --filter '*' build",
-    "test": "vitest",
-    "check": "biome check .",
-    "format": "biome format --write ."
-  }
+	"name": "yanclaw",
+	"version": "0.1.0",
+	"private": true,
+	"workspaces": [
+		"packages/*",
+		"plugins/*"
+	],
+	"scripts": {
+		"dev": "bun run --filter @yanclaw/web dev",
+		"dev:server": "bun run --filter @yanclaw/server dev",
+		"dev:tauri": "bunx tauri dev",
+		"build": "bun run --filter '*' build",
+		"test": "vitest",
+		"check": "biome check .",
+		"format": "biome format --write ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.6"
+	}
 }

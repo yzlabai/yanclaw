@@ -1,25 +1,25 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "paths": {
-      "@yanclaw/server/*": ["./packages/server/src/*"],
-      "@yanclaw/web/*": ["./packages/web/src/*"],
-      "@yanclaw/shared/*": ["./packages/shared/src/*"]
-    }
-  },
-  "references": [
-    { "path": "./packages/server" },
-    { "path": "./packages/web" },
-    { "path": "./packages/shared" }
-  ]
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		"paths": {
+			"@yanclaw/server/*": ["./packages/server/src/*"],
+			"@yanclaw/web/*": ["./packages/web/src/*"],
+			"@yanclaw/shared/*": ["./packages/shared/src/*"]
+		}
+	},
+	"references": [
+		{ "path": "./packages/server" },
+		{ "path": "./packages/web" },
+		{ "path": "./packages/shared" }
+	]
 }

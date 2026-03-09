@@ -1,7 +1,7 @@
-import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
+import { Channels } from "./pages/Channels";
 import { Chat } from "./pages/Chat";
 import { Settings } from "./pages/Settings";
-import { Channels } from "./pages/Channels";
 
 export function App() {
 	return (

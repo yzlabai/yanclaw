@@ -1,0 +1,191 @@
+import { type FSWatcher, watch } from "node:fs";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import JSON5 from "json5";
+import { type Config, configSchema } from "./schema";
+
+export function resolveDataDir(): string {
+	return process.env.YANCLAW_DATA_DIR ?? join(homedir(), ".yanclaw");
+}
+
+export function resolveConfigPath(): string {
+	return process.env.YANCLAW_CONFIG_PATH ?? join(resolveDataDir(), "config.json5");
+}
+
+function expandEnvVars(obj: unknown): unknown {
+	if (typeof obj === "string") {
+		return obj.replace(/\$\{(\w+)\}/g, (_, key) => process.env[key] ?? "");
+	}
+	if (Array.isArray(obj)) {
+		return obj.map(expandEnvVars);
+	}
+	if (obj !== null && typeof obj === "object") {
+		const result: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(obj)) {
+			result[key] = expandEnvVars(value);
+		}
+		return result;
+	}
+	return obj;
+}
+
+function deepMerge(target: unknown, source: unknown): unknown {
+	if (
+		source !== null &&
+		typeof source === "object" &&
+		!Array.isArray(source) &&
+		target !== null &&
+		typeof target === "object" &&
+		!Array.isArray(target)
+	) {
+		const result: Record<string, unknown> = { ...(target as Record<string, unknown>) };
+		for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
+			result[key] = deepMerge(result[key], value);
+		}
+		return result;
+	}
+	return source;
+}
+
+async function atomicWrite(filePath: string, content: string): Promise<void> {
+	const tmpPath = `${filePath}.tmp.${Date.now()}`;
+	await writeFile(tmpPath, content, "utf-8");
+	await rename(tmpPath, filePath);
+}
+
+const DEFAULT_CONFIG = `{
+  // YanClaw 配置文件
+  // 文档: https://gitee.com/yzlab/yanclaw/blob/master/docs/FEATURES.md
+
+  gateway: {
+    port: 18789,
+    bind: "loopback",
+  },
+
+  agents: [
+    {
+      id: "main",
+      name: "默认助手",
+      model: "claude-sonnet-4-20250514",
+      systemPrompt: "You are a helpful assistant.",
+    },
+  ],
+
+  models: {
+    // anthropic: { profiles: [{ id: "default", apiKey: "\${ANTHROPIC_API_KEY}" }] },
+    // openai: { profiles: [{ id: "default", apiKey: "\${OPENAI_API_KEY}" }] },
+  },
+
+  channels: {},
+  routing: { default: "main", dmScope: "per-peer" },
+  tools: { policy: { default: "allow" }, exec: { ask: "on-miss" } },
+}
+`;
+
+export class ConfigStore {
+	private config: Config;
+	private configPath: string;
+	private watcher: FSWatcher | null = null;
+	private listeners = new Set<(config: Config) => void>();
+
+	private constructor(config: Config, configPath: string) {
+		this.config = config;
+		this.configPath = configPath;
+	}
+
+	static async load(configPath?: string): Promise<ConfigStore> {
+		const path = configPath ?? resolveConfigPath();
+		const dir = dirname(path);
+
+		// Ensure data directory exists
+		await mkdir(dir, { recursive: true });
+
+		let raw: unknown;
+		try {
+			const content = await readFile(path, "utf-8");
+			raw = JSON5.parse(content);
+		} catch {
+			// First run: create default config
+			await writeFile(path, DEFAULT_CONFIG, "utf-8");
+			raw = JSON5.parse(DEFAULT_CONFIG);
+		}
+
+		const expanded = expandEnvVars(raw);
+		const config = configSchema.parse(expanded);
+
+		// Generate auth token if not set
+		if (!config.gateway.auth.token) {
+			const { randomBytes } = await import("node:crypto");
+			config.gateway.auth.token = randomBytes(32).toString("hex");
+		}
+
+		const store = new ConfigStore(config, path);
+		store.startWatcher();
+		return store;
+	}
+
+	get(): Config {
+		return this.config;
+	}
+
+	getAgent(agentId: string) {
+		return this.config.agents.find((a) => a.id === agentId);
+	}
+
+	onChange(handler: (config: Config) => void): () => void {
+		this.listeners.add(handler);
+		return () => this.listeners.delete(handler);
+	}
+
+	async patch(partial: Record<string, unknown>): Promise<void> {
+		const merged = deepMerge(this.config, partial);
+		const validated = configSchema.parse(merged);
+		this.config = validated;
+
+		await atomicWrite(this.configPath, JSON5.stringify(validated, null, 2));
+		this.notifyListeners();
+	}
+
+	private startWatcher(): void {
+		try {
+			this.watcher = watch(this.configPath, async () => {
+				try {
+					const content = await readFile(this.configPath, "utf-8");
+					const raw = JSON5.parse(content);
+					const expanded = expandEnvVars(raw);
+					const newConfig = configSchema.parse(expanded);
+
+					// Preserve runtime-only token
+					if (!newConfig.gateway.auth.token) {
+						newConfig.gateway.auth.token = this.config.gateway.auth.token;
+					}
+
+					this.config = newConfig;
+					this.notifyListeners();
+					console.log("[config] Hot-reloaded config");
+				} catch (err) {
+					console.error("[config] Reload failed, keeping old config:", err);
+				}
+			});
+		} catch {
+			// Watch not supported (e.g., some CI environments)
+		}
+	}
+
+	private notifyListeners(): void {
+		for (const listener of this.listeners) {
+			try {
+				listener(this.config);
+			} catch (err) {
+				console.error("[config] Listener error:", err);
+			}
+		}
+	}
+
+	close(): void {
+		this.watcher?.close();
+		this.watcher = null;
+		this.listeners.clear();
+	}
+}
