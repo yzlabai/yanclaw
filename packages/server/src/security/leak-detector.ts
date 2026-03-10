@@ -22,14 +22,11 @@ export class LeakDetector {
 	/** Register all API keys from a config object. */
 	registerFromConfig(config: {
 		models: {
-			anthropic?: { profiles: { apiKey: string }[] };
-			openai?: { profiles: { apiKey: string }[] };
-			google?: { profiles: { apiKey: string }[] };
+			providers: Record<string, { profiles: { apiKey: string }[] }>;
 		};
 	}): void {
-		for (const provider of ["anthropic", "openai", "google"] as const) {
-			const profiles = config.models[provider]?.profiles ?? [];
-			for (const profile of profiles) {
+		for (const provider of Object.values(config.models.providers)) {
+			for (const profile of provider.profiles) {
 				if (profile.apiKey) {
 					this.register(profile.apiKey);
 				}

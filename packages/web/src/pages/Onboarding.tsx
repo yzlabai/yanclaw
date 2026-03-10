@@ -24,13 +24,14 @@ export function Onboarding() {
 		setSaving(true);
 		setError("");
 		try {
-			const models: Record<string, unknown> = {};
-			models[provider] = {
+			const providers: Record<string, unknown> = {};
+			providers[provider] = {
+				type: provider,
 				profiles: [{ id: "default", apiKey }],
 			};
 
 			const patch: Record<string, unknown> = {
-				models,
+				models: { providers },
 				agents: [
 					{
 						id: "main",

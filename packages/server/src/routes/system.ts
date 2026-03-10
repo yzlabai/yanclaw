@@ -31,12 +31,10 @@ export const systemRoute = new Hono()
 	.get("/setup", (c) => {
 		const config = getGateway().config.get();
 
-		// Setup is complete if at least one model provider is configured
-		const hasProvider =
-			(config.models.anthropic?.profiles?.some((p) => !!p.apiKey) ?? false) ||
-			(config.models.openai?.profiles?.some((p) => !!p.apiKey) ?? false) ||
-			(config.models.google?.profiles?.some((p) => !!p.apiKey) ?? false) ||
-			!!config.models.ollama?.baseUrl;
+		// Setup is complete if at least one model provider is configured with profiles
+		const hasProvider = Object.values(config.models.providers).some(
+			(p) => p.profiles.some((prof) => !!prof.apiKey) || p.type === "ollama",
+		);
 
 		return c.json({ needsSetup: !hasProvider });
 	});

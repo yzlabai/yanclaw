@@ -14,6 +14,38 @@ export function resolveConfigPath(): string {
 	return process.env.YANCLAW_CONFIG_PATH ?? join(resolveDataDir(), "config.json5");
 }
 
+/** Migrate old config format (models.anthropic/openai/google/ollama) to new providers format. */
+export function migrateConfig(raw: unknown): unknown {
+	if (!raw || typeof raw !== "object") return raw;
+	const obj = raw as Record<string, unknown>;
+	const models = obj.models as Record<string, unknown> | undefined;
+	if (!models) return raw;
+
+	// Already new format
+	if (models.providers) return raw;
+
+	// Detect old format: top-level keys are provider names
+	const knownProviders = ["anthropic", "openai", "google", "ollama"];
+	const hasOldFormat = knownProviders.some((k) => k in models);
+	if (!hasOldFormat) return raw;
+
+	console.warn(
+		"[config] Detected old models format, migrating to providers format. Please update your config file.",
+	);
+
+	const providers: Record<string, unknown> = {};
+	for (const [name, value] of Object.entries(models)) {
+		if (!knownProviders.includes(name)) continue;
+		if (name === "ollama") {
+			providers[name] = { type: "ollama", ...(value as Record<string, unknown>) };
+		} else {
+			providers[name] = { type: name, ...(value as Record<string, unknown>) };
+		}
+	}
+	obj.models = { providers };
+	return raw;
+}
+
 function expandEnvVars(obj: unknown): unknown {
 	if (typeof obj === "string") {
 		return obj.replace(/\$\{(\w+)\}/g, (_, key) => process.env[key] ?? "");
@@ -74,8 +106,10 @@ const DEFAULT_CONFIG = `{
   ],
 
   models: {
-    // anthropic: { profiles: [{ id: "default", apiKey: "\${ANTHROPIC_API_KEY}" }] },
-    // openai: { profiles: [{ id: "default", apiKey: "\${OPENAI_API_KEY}" }] },
+    providers: {
+      // anthropic: { type: "anthropic", profiles: [{ id: "default", apiKey: "\${ANTHROPIC_API_KEY}" }] },
+      // openai: { type: "openai", profiles: [{ id: "default", apiKey: "\${OPENAI_API_KEY}" }] },
+    },
   },
 
   channels: {},
@@ -112,6 +146,9 @@ export class ConfigStore {
 			await writeFile(path, DEFAULT_CONFIG, "utf-8");
 			raw = JSON5.parse(DEFAULT_CONFIG);
 		}
+
+		// Migrate old config format before validation
+		raw = migrateConfig(raw);
 
 		// Expand env vars first, then vault refs
 		let expanded = expandEnvVars(raw);
@@ -177,7 +214,8 @@ export class ConfigStore {
 			this.watcher = watch(this.configPath, async () => {
 				try {
 					const content = await readFile(this.configPath, "utf-8");
-					const raw = JSON5.parse(content);
+					let raw: unknown = JSON5.parse(content);
+					raw = migrateConfig(raw);
 					let expanded = expandEnvVars(raw);
 					if (this.vault && this.vault.keys().length > 0) {
 						expanded = expandVaultRefs(expanded, this.vault);

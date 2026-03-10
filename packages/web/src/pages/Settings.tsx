@@ -34,25 +34,28 @@ export function Settings() {
 		try {
 			const patch: Record<string, unknown> = {};
 
-			// Models config
-			const models: Record<string, unknown> = {};
+			// Models config (new providers format)
+			const providers: Record<string, unknown> = {};
 			if (anthropicKey) {
-				models.anthropic = {
+				providers.anthropic = {
+					type: "anthropic",
 					profiles: [{ id: "default", apiKey: anthropicKey }],
 				};
 			}
 			if (openaiKey) {
-				models.openai = {
+				providers.openai = {
+					type: "openai",
 					profiles: [{ id: "default", apiKey: openaiKey }],
 				};
 			}
 			if (googleKey) {
-				models.google = {
+				providers.google = {
+					type: "google",
 					profiles: [{ id: "default", apiKey: googleKey }],
 				};
 			}
-			if (Object.keys(models).length > 0) {
-				patch.models = models;
+			if (Object.keys(providers).length > 0) {
+				patch.models = { providers };
 			}
 
 			// Gateway config

@@ -11,7 +11,9 @@ import { MemoryStore } from "./db/memories";
 import { SessionStore } from "./db/sessions";
 import { getRawDatabase } from "./db/sqlite";
 import { MediaStore } from "./media";
+import { SttService } from "./media/stt";
 import { MemoryAutoIndexer } from "./memory";
+import { setEmbeddingModelManager } from "./memory/embeddings";
 import { PluginLoader, PluginRegistry } from "./plugins";
 import { AnomalyDetector } from "./security/anomaly";
 import { AuditLogger } from "./security/audit";
@@ -54,8 +56,11 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		console.warn("[gateway] Audit logger not available (database not initialized)");
 	}
 
+	setEmbeddingModelManager(modelManager);
+	const sttService = new SttService(modelManager);
 	const agentRuntime = new AgentRuntime(modelManager, approvalManager, mediaStore, leakDetector);
 	const channelManager = new ChannelManager();
+	channelManager.sttService = sttService;
 	const cronService = new CronService();
 	const pluginRegistry = new PluginRegistry();
 

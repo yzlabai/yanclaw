@@ -8,23 +8,44 @@ const authProfileSchema = z.object({
 	baseUrl: z.string().optional(),
 });
 
+export const providerTypeValues = [
+	"anthropic",
+	"openai",
+	"google",
+	"ollama",
+	"openai-compatible",
+] as const;
+export type ProviderType = (typeof providerTypeValues)[number];
+
 const providerSchema = z.object({
+	type: z.enum(providerTypeValues),
 	profiles: z.array(authProfileSchema).default([]),
 	baseUrl: z.string().optional(),
+	models: z.record(z.string(), z.string()).optional(), // alias → actual model ID
 });
 
 const modelsSchema = z
 	.object({
-		anthropic: providerSchema.optional(),
-		openai: providerSchema.optional(),
-		google: providerSchema.optional(),
-		ollama: z
-			.object({
-				baseUrl: z.string().default("http://localhost:11434"),
-			})
-			.optional(),
+		providers: z.record(z.string(), providerSchema).default({}),
 	})
 	.default({});
+
+// --- Preference & SystemModels ---
+
+export const preferenceValues = ["default", "fast", "quality", "cheap"] as const;
+export type Preference = (typeof preferenceValues)[number];
+
+const sceneModelSchema = z.union([
+	z.string(), // shorthand: equivalent to { default: "model-id" }
+	z.object({
+		default: z.string(),
+		fast: z.string().optional(),
+		quality: z.string().optional(),
+		cheap: z.string().optional(),
+	}),
+]);
+
+const systemModelsSchema = z.record(z.string(), sceneModelSchema).default({});
 
 const agentSchema = z.object({
 	id: z.string(),
@@ -32,6 +53,7 @@ const agentSchema = z.object({
 	model: z.string().default("claude-sonnet-4-20250514"),
 	systemPrompt: z.string().default("You are a helpful assistant."),
 	workspaceDir: z.string().optional(),
+	preference: z.enum(preferenceValues).optional(),
 	tools: z
 		.object({
 			allow: z.array(z.string()).optional(),
@@ -80,6 +102,7 @@ const bindingSchema = z.object({
 	agent: z.string(),
 	dmScope: z.enum(["main", "per-peer", "per-channel-peer", "per-account-peer"]).optional(),
 	priority: z.number().optional(),
+	preference: z.enum(preferenceValues).optional(),
 });
 
 const routingSchema = z
@@ -154,6 +177,8 @@ export const configSchema = z.object({
 	agents: z.array(agentSchema).default([defaultAgent]),
 
 	models: modelsSchema,
+
+	systemModels: systemModelsSchema,
 
 	channels: channelsSchema,
 
@@ -284,5 +309,8 @@ export type AgentConfig = z.infer<typeof agentSchema>;
 export type Binding = z.infer<typeof bindingSchema>;
 export type ToolsConfig = z.infer<typeof toolsSchema>;
 export type SecurityConfig = z.infer<typeof configSchema>["security"];
+export type ProviderConfig = z.infer<typeof providerSchema>;
+export type AuthProfile = z.infer<typeof authProfileSchema>;
+export type SystemModels = z.infer<typeof systemModelsSchema>;
 
 export { agentSchema, bindingSchema };

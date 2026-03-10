@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { type CoreMessage, generateText, type LanguageModel, streamText } from "ai";
 import type { ApprovalManager } from "../approvals";
-import type { Config } from "../config/schema";
+import type { Config, Preference } from "../config/schema";
 import { resolveDataDir } from "../config/store";
 import { MemoryStore } from "../db/memories";
 import { SessionStore } from "../db/sessions";
@@ -85,6 +85,7 @@ export class AgentRuntime {
 		channelId?: string;
 		imageUrls?: string[];
 		signal?: AbortSignal;
+		preference?: Preference;
 	}): AsyncGenerator<AgentEvent> {
 		const {
 			agentId,
@@ -95,6 +96,7 @@ export class AgentRuntime {
 			channelId,
 			imageUrls,
 			signal,
+			preference,
 		} = params;
 
 		const agentConfig = config.agents.find((a) => a.id === agentId);
@@ -165,11 +167,27 @@ export class AgentRuntime {
 				{ role: "user", content: userContent },
 			];
 
-			// Resolve model with failover
-			const { model, provider, profileId } = this.modelManager.resolveWithMeta(
-				agentConfig.model,
-				config,
-			);
+			// Resolve model: 2D scene×preference with fallback to legacy model ID
+			const scene = imageUrls && imageUrls.length > 0 ? "vision" : "chat";
+			const resolvedPreference = preference ?? agentConfig.preference ?? "default";
+
+			let model: LanguageModel;
+			let provider: string;
+			let profileId: string;
+			try {
+				// Try 2D systemModels resolution first
+				({ model, provider, profileId } = this.modelManager.resolveWithMeta(
+					scene,
+					resolvedPreference,
+					config,
+				));
+			} catch {
+				// Fallback to legacy: resolve by agent's model ID directly
+				({ model, provider, profileId } = this.modelManager.resolveByIdWithMeta(
+					agentConfig.model,
+					config,
+				));
+			}
 
 			// Create tools filtered by policy + ownerOnly
 			const tools = createToolset({

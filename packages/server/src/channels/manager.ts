@@ -1,4 +1,5 @@
-import type { Config } from "../config/schema";
+import type { Config, Preference } from "../config/schema";
+import type { SttService } from "../media/stt";
 import { resolveIdentity, resolveRoute } from "../routing/resolve";
 import { checkDmPolicy, isOwnerSender } from "./dm-policy";
 import { CHANNEL_DOCK } from "./dock";
@@ -16,6 +17,7 @@ export class ChannelManager {
 	private adapters = new Map<string, ChannelAdapter>();
 	private healthTimer: ReturnType<typeof setInterval> | null = null;
 	private reconnectAttempts = new Map<string, number>();
+	sttService?: SttService;
 	private agentRunner?: (params: {
 		agentId: string;
 		sessionKey: string;
@@ -24,6 +26,7 @@ export class ChannelManager {
 		isOwner: boolean;
 		channelId: string;
 		imageUrls?: string[];
+		preference?: Preference;
 	}) => AsyncGenerator<{
 		type: string;
 		text?: string;
@@ -41,6 +44,7 @@ export class ChannelManager {
 			isOwner: boolean;
 			channelId: string;
 			imageUrls?: string[];
+			preference?: Preference;
 		}) => AsyncGenerator<{
 			type: string;
 			text?: string;
@@ -197,15 +201,38 @@ export class ChannelManager {
 			.filter((a) => a.type === "image" && a.url)
 			.map((a) => a.url as string);
 
+		// Transcribe audio attachments via STT if configured
+		let messageText = msg.text;
+		const stt = this.sttService;
+		if (stt && config) {
+			const audioAttachments = msg.attachments.filter(
+				(a) => (a.type === "audio" || a.type === "voice") && a.url,
+			);
+			if (audioAttachments.length > 0 && stt.isAvailable(config)) {
+				try {
+					const transcripts = await Promise.all(
+						audioAttachments.map((a) => stt.transcribe(a.url as string, config)),
+					);
+					const transcribedText = transcripts.filter(Boolean).join("\n");
+					if (transcribedText) {
+						messageText = [messageText, transcribedText].filter(Boolean).join("\n");
+					}
+				} catch (err) {
+					console.warn("[channel] STT transcription failed:", err);
+				}
+			}
+		}
+
 		try {
 			const events = this.agentRunner({
 				agentId: route.agentId,
 				sessionKey: route.sessionKey,
-				message: msg.text,
+				message: messageText,
 				config,
 				isOwner,
 				channelId: msg.channel,
 				imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+				preference: route.binding?.preference,
 			});
 
 			// 4. Collect response and send reply

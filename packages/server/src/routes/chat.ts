@@ -10,6 +10,7 @@ const chatSendSchema = z.object({
 	sessionKey: z.string().default("agent:main:main"),
 	message: z.string().min(1),
 	imageUrls: z.array(z.string()).optional(),
+	preference: z.enum(["default", "fast", "quality", "cheap"]).optional(),
 });
 
 const chatSteerSchema = z.object({
@@ -40,6 +41,7 @@ export const chatRoute = new Hono()
 					config,
 					imageUrls: body.imageUrls,
 					signal,
+					preference: body.preference,
 				});
 
 				for await (const event of events) {
