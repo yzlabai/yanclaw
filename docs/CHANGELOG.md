@@ -14,7 +14,26 @@
 
 ## 时间线
 
-### Phase 5 — 安全加固 + Code Review（2026-03-09）
+### Phase 6 — 纵深安全加固（2026-03-10）
+
+参考 IronClaw 纵深防御架构，新增 10 个安全模块：
+
+- **凭证加密存储 (Vault)**：AES-256-GCM 加密 API Key，machine-id 派生密钥，`$vault:key_name` 配置语法，CLI 迁移脚本
+- **凭证泄漏检测 (LeakDetector)**：实时扫描 LLM 输出，检测已注册凭据前缀，命中即阻断
+- **WebSocket 票据认证**：一次性 30 秒 ticket + `POST /api/ws/ticket` 端点，替代无法携带 header 的 WS 连接
+- **滑动窗口速率限制**：内存 Map 实现，全局 60/min、chat 10/min、approval 30/min，auth token 优先做 key
+- **提示注入防御 (Sanitize)**：`<tool_result>` 边界标记包裹所有工具结果 + 注入模式检测 + 系统提示安全后缀
+- **数据流启发式 (DataFlow)**：shell 外泄检测（curl/wget/nc/scp/ssh）、敏感路径写入/读取规则
+- **审计日志 (AuditLogger)**：SQLite 缓冲写入，查询 API `/api/audit`，自动按天数清理
+- **异常频率检测 (AnomalyDetector)**：每工具每会话滑动窗口计数，warn/critical 分级
+- **网络白名单 (SSRF)**：私有地址阻断、端口豁免（Ollama/self）、host 白名单，集成到 web_fetch
+- **Token 自动轮转**：可配置间隔 + grace period 双 token 验证，文件先写再更新内存
+- **能力模型 (Capabilities)**：preset（safe-reader/researcher/developer/full-access）或自定义能力数组，per-agent 配置
+- **Symlink 防护**：file_read/write/edit 用 `realpath()` 二次校验，防止符号链接逃逸 workspace
+
+Code Review 修复 13 项：vault 回退密钥持久化、leak detector 短凭据支持、token 轮转竞态、WS ticket 过期顺序、audit flush 先写后清、network 端口 NaN、tool 结果边界包裹、数据流规则扩展、rate limit IP 伪造、anomaly 内存泄漏、symlink 逃逸、注入正则误报、audit 查询 DoS
+
+### Phase 5 — Code Review（2026-03-09）
 
 → [详细日志](devlogs/phase3-extension.md)
 

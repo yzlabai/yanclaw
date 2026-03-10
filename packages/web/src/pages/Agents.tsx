@@ -120,7 +120,7 @@ export function Agents() {
 				<button
 					type="button"
 					onClick={handleCreate}
-					className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-sm transition-colors"
+					className="bg-primary hover:bg-primary/90 text-foreground px-4 py-1.5 rounded-lg text-sm transition-colors"
 				>
 					+ New Agent
 				</button>
@@ -131,23 +131,25 @@ export function Agents() {
 				{agents.map((agent) => (
 					<div
 						key={agent.id}
-						className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex items-start justify-between"
+						className="bg-card border border-border rounded-lg p-4 flex items-start justify-between"
 					>
 						<div className="flex-1 min-w-0">
 							<div className="flex items-center gap-2">
-								<span className="font-medium text-white">{agent.name}</span>
-								<span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
+								<span className="font-medium text-foreground">{agent.name}</span>
+								<span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
 									{agent.id}
 								</span>
 							</div>
-							<div className="text-sm text-gray-400 mt-1">{agent.model}</div>
-							<div className="text-xs text-gray-500 mt-1 truncate">{agent.systemPrompt}</div>
+							<div className="text-sm text-muted-foreground mt-1">{agent.model}</div>
+							<div className="text-xs text-muted-foreground mt-1 truncate">
+								{agent.systemPrompt}
+							</div>
 						</div>
 						<div className="flex gap-2 ml-4">
 							<button
 								type="button"
 								onClick={() => handleEdit(agent)}
-								className="text-gray-400 hover:text-white text-sm px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+								className="text-muted-foreground hover:text-foreground text-sm px-2 py-1 rounded hover:bg-muted transition-colors"
 							>
 								Edit
 							</button>
@@ -155,7 +157,7 @@ export function Agents() {
 								<button
 									type="button"
 									onClick={() => handleDelete(agent.id)}
-									className="text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+									className="text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded hover:bg-muted transition-colors"
 								>
 									Delete
 								</button>
@@ -163,44 +165,44 @@ export function Agents() {
 						</div>
 					</div>
 				))}
-				{agents.length === 0 && <p className="text-gray-500">No agents configured.</p>}
+				{agents.length === 0 && <p className="text-muted-foreground">No agents configured.</p>}
 			</div>
 
 			{/* Edit modal */}
 			{editing && (
 				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-					<div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-lg">
+					<div className="bg-card border border-border rounded-xl p-6 w-full max-w-lg">
 						<h3 className="text-lg font-semibold mb-4">
 							{isNew ? "Create Agent" : `Edit: ${editing.name}`}
 						</h3>
 						<div className="space-y-4">
 							<div>
-								<label className="block text-sm text-gray-400 mb-1">ID</label>
+								<label className="block text-sm text-muted-foreground mb-1">ID</label>
 								<input
 									type="text"
 									value={editing.id}
 									onChange={(e) => setEditing({ ...editing, id: e.target.value })}
 									disabled={!isNew}
 									placeholder="my-agent"
-									className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
 								/>
 							</div>
 							<div>
-								<label className="block text-sm text-gray-400 mb-1">Name</label>
+								<label className="block text-sm text-muted-foreground mb-1">Name</label>
 								<input
 									type="text"
 									value={editing.name}
 									onChange={(e) => setEditing({ ...editing, name: e.target.value })}
 									placeholder="My Assistant"
-									className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary"
 								/>
 							</div>
 							<div>
-								<label className="block text-sm text-gray-400 mb-1">Model</label>
+								<label className="block text-sm text-muted-foreground mb-1">Model</label>
 								<select
 									value={editing.model}
 									onChange={(e) => setEditing({ ...editing, model: e.target.value })}
-									className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-primary"
 								>
 									{MODEL_OPTIONS.map((g) => (
 										<optgroup key={g.group} label={g.group}>
@@ -214,12 +216,12 @@ export function Agents() {
 								</select>
 							</div>
 							<div>
-								<label className="block text-sm text-gray-400 mb-1">System Prompt</label>
+								<label className="block text-sm text-muted-foreground mb-1">System Prompt</label>
 								<textarea
 									value={editing.systemPrompt}
 									onChange={(e) => setEditing({ ...editing, systemPrompt: e.target.value })}
 									rows={4}
-									className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary resize-y"
 								/>
 							</div>
 						</div>
@@ -227,7 +229,7 @@ export function Agents() {
 							<button
 								type="button"
 								onClick={() => setEditing(null)}
-								className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+								className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
 							>
 								Cancel
 							</button>
@@ -235,7 +237,7 @@ export function Agents() {
 								type="button"
 								onClick={handleSave}
 								disabled={saving || !editing.id || !editing.name}
-								className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg transition-colors"
+								className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground px-6 py-2 rounded-lg transition-colors"
 							>
 								{saving ? "Saving..." : isNew ? "Create" : "Save"}
 							</button>

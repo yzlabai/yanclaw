@@ -15,7 +15,7 @@ export function TypingLoader({
 			{[0, 1, 2].map((i) => (
 				<div
 					key={i}
-					className={cn("bg-gray-400 rounded-full animate-bounce", dotSizes[size])}
+					className={cn("bg-muted-foreground rounded-full animate-bounce", dotSizes[size])}
 					style={{ animationDelay: `${i * 200}ms`, animationDuration: "0.8s" }}
 				/>
 			))}
@@ -35,7 +35,7 @@ export function CircularLoader({
 	return (
 		<div
 			className={cn(
-				"border-blue-500 animate-spin rounded-full border-2 border-t-transparent",
+				"border-primary animate-spin rounded-full border-2 border-t-transparent",
 				sizeClasses[size],
 				className,
 			)}

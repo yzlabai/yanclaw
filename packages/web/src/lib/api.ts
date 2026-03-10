@@ -79,16 +79,33 @@ export async function uploadMedia(
 
 export const client = hc<AppType>(API_BASE);
 
-export function createWebSocket(): WebSocket {
-	return new WebSocket(`${WS_BASE}/api/ws`);
+/** Get a one-time ticket for WebSocket authentication. */
+async function getWsTicket(): Promise<string | null> {
+	try {
+		const res = await apiFetch(`${API_BASE}/api/ws/ticket`, { method: "POST" });
+		if (!res.ok) return null;
+		const data = (await res.json()) as { ticket: string };
+		return data.ticket;
+	} catch {
+		return null;
+	}
+}
+
+export async function createWebSocket(): Promise<WebSocket> {
+	const ticket = await getWsTicket();
+	const params = ticket ? `?ticket=${ticket}` : "";
+	return new WebSocket(`${WS_BASE}/api/ws${params}`);
 }
 
 export type AgentEvent =
 	| { type: "delta"; sessionKey: string; text: string }
+	| { type: "thinking"; sessionKey: string; text: string }
 	| { type: "tool_call"; sessionKey: string; name: string; args: unknown }
 	| { type: "tool_result"; sessionKey: string; name: string; result: unknown; duration: number }
 	| { type: "done"; sessionKey: string; usage: { promptTokens: number; completionTokens: number } }
-	| { type: "error"; sessionKey: string; message: string };
+	| { type: "aborted"; sessionKey: string; partial: string }
+	| { type: "error"; sessionKey: string; message: string }
+	| { type: "steering_resume"; sessionKey: string; message: string };
 
 export async function sendChatMessage(
 	agentId: string,
@@ -131,4 +148,26 @@ export async function sendChatMessage(
 			}
 		}
 	}
+}
+
+/** Send a steering message while the agent is still streaming. */
+export async function steerChat(
+	sessionKey: string,
+	message: string,
+): Promise<{ intent: string; queued: boolean }> {
+	const res = await apiFetch(`${API_BASE}/api/chat/steer`, {
+		method: "POST",
+		body: JSON.stringify({ sessionKey, message }),
+	});
+	if (!res.ok) throw new Error(`Steer failed: ${res.status}`);
+	return res.json();
+}
+
+/** Cancel the active agent run for a session. */
+export async function cancelChat(sessionKey: string): Promise<void> {
+	const res = await apiFetch(`${API_BASE}/api/chat/cancel`, {
+		method: "POST",
+		body: JSON.stringify({ sessionKey }),
+	});
+	if (!res.ok) throw new Error(`Cancel failed: ${res.status}`);
 }

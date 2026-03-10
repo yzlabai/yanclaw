@@ -9,7 +9,7 @@ function ScrollButton({ className }: { className?: string }) {
 		<button
 			type="button"
 			className={cn(
-				"absolute bottom-24 left-1/2 -translate-x-1/2 h-8 w-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center shadow-lg transition-all duration-150",
+				"absolute bottom-24 left-1/2 -translate-x-1/2 h-8 w-8 rounded-full bg-muted border border-border flex items-center justify-center shadow-lg transition-all duration-150",
 				!isAtBottom
 					? "translate-y-0 scale-100 opacity-100"
 					: "pointer-events-none translate-y-4 scale-95 opacity-0",
@@ -17,7 +17,7 @@ function ScrollButton({ className }: { className?: string }) {
 			)}
 			onClick={() => scrollToBottom()}
 		>
-			<ChevronDown className="h-4 w-4 text-gray-300" />
+			<ChevronDown className="h-4 w-4 text-foreground/80" />
 		</button>
 	);
 }

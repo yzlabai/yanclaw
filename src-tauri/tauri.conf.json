@@ -55,7 +55,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "YOUR_PUBLIC_KEY_HERE",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzODRBNTU3Q0QzNzI2RTkKUldUcEpqZk5WNldFbzF4REFRQWFRZzQwQWx0RWFvMkt4KzU5cG92SlFaaDl4TU91cEFJUS9JdTIK",
       "endpoints": [
         "https://github.com/yanclaw/yanclaw/releases/latest/download/latest.json"
       ],

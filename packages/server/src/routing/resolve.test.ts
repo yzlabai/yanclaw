@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Config } from "../config/schema";
-import { resolveIdentity, resolveRoute } from "./resolve";
 import type { RouteContext } from "./resolve";
+import { resolveIdentity, resolveRoute } from "./resolve";
 
 function makeConfig(overrides: Partial<Config["routing"]> = {}): Config {
 	return {

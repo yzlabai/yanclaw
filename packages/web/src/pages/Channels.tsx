@@ -11,7 +11,7 @@ interface ChannelInfo {
 
 const STATUS_COLORS: Record<string, string> = {
 	connected: "bg-green-500",
-	disconnected: "bg-gray-500",
+	disconnected: "bg-muted-foreground",
 	connecting: "bg-yellow-500 animate-pulse",
 	error: "bg-red-500",
 };
@@ -86,7 +86,7 @@ export function Channels() {
 		return (
 			<div className="p-6">
 				<h2 className="text-lg font-semibold mb-4">Channels</h2>
-				<p className="text-gray-500">Loading...</p>
+				<p className="text-muted-foreground">Loading...</p>
 			</div>
 		);
 	}
@@ -98,7 +98,7 @@ export function Channels() {
 				<button
 					type="button"
 					onClick={fetchChannels}
-					className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+					className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted transition-colors"
 					title="Refresh"
 				>
 					<RefreshCw className="size-4" />
@@ -107,8 +107,8 @@ export function Channels() {
 
 			{channels.length === 0 ? (
 				<div className="text-center py-12">
-					<p className="text-gray-400 mb-2">No channels configured.</p>
-					<p className="text-gray-500 text-sm">
+					<p className="text-muted-foreground mb-2">No channels configured.</p>
+					<p className="text-muted-foreground text-sm">
 						Add channel configuration in Settings to connect messaging platforms.
 					</p>
 				</div>
@@ -121,7 +121,7 @@ export function Channels() {
 						return (
 							<div
 								key={key}
-								className="flex items-center gap-4 px-4 py-3 rounded-lg bg-gray-800/50 border border-gray-800"
+								className="flex items-center gap-4 px-4 py-3 rounded-lg bg-muted/50 border border-border"
 							>
 								{/* Icon */}
 								<span className="text-2xl" title={ch.type}>
@@ -131,8 +131,8 @@ export function Channels() {
 								{/* Info */}
 								<div className="flex-1 min-w-0">
 									<div className="flex items-center gap-2">
-										<span className="font-medium text-white capitalize">{ch.type}</span>
-										<span className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+										<span className="font-medium text-foreground capitalize">{ch.type}</span>
+										<span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
 											{ch.accountId}
 										</span>
 									</div>
@@ -140,8 +140,12 @@ export function Channels() {
 										<span
 											className={`inline-block size-2 rounded-full ${STATUS_COLORS[ch.status]}`}
 										/>
-										<span className="text-xs text-gray-400">{STATUS_LABELS[ch.status]}</span>
-										{!ch.enabled && <span className="text-xs text-gray-600">(disabled)</span>}
+										<span className="text-xs text-muted-foreground">
+											{STATUS_LABELS[ch.status]}
+										</span>
+										{!ch.enabled && (
+											<span className="text-xs text-muted-foreground/70">(disabled)</span>
+										)}
 									</div>
 								</div>
 
@@ -153,7 +157,7 @@ export function Channels() {
 												type="button"
 												onClick={() => disconnectChannel(ch.type, ch.accountId)}
 												disabled={isActing}
-												className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white disabled:opacity-50 transition-colors"
+												className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-accent text-foreground/80 hover:bg-accent hover:text-foreground disabled:opacity-50 transition-colors"
 											>
 												<PowerOff className="size-3.5" />
 												Disconnect
@@ -163,7 +167,7 @@ export function Channels() {
 												type="button"
 												onClick={() => connectChannel(ch.type, ch.accountId)}
 												disabled={isActing}
-												className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+												className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-primary text-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
 											>
 												<Power className="size-3.5" />
 												Connect

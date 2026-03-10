@@ -6,26 +6,46 @@ import type { Config } from "../config/schema";
 import { resolveDataDir } from "../config/store";
 import { MemoryStore } from "../db/memories";
 import { SessionStore } from "../db/sessions";
+import type { MediaStore } from "../media";
 import { generateEmbedding } from "../memory/embeddings";
+import type { LeakDetector } from "../security/leak-detector";
+import {
+	checkDataFlow,
+	detectInjection,
+	SAFETY_SUFFIX,
+	wrapUntrustedContent,
+} from "../security/sanitize";
 import { ModelManager } from "./model-manager";
 import { createToolset } from "./tools";
 
 export type AgentEvent =
 	| { type: "delta"; sessionKey: string; text: string }
+	| { type: "thinking"; sessionKey: string; text: string }
 	| { type: "tool_call"; sessionKey: string; name: string; args: unknown }
 	| { type: "tool_result"; sessionKey: string; name: string; result: unknown; duration: number }
 	| { type: "done"; sessionKey: string; usage: { promptTokens: number; completionTokens: number } }
-	| { type: "error"; sessionKey: string; message: string };
+	| { type: "aborted"; sessionKey: string; partial: string }
+	| { type: "error"; sessionKey: string; message: string }
+	| { type: "steering_resume"; sessionKey: string; message: string };
 
 export class AgentRuntime {
 	private sessionStore = new SessionStore();
 	private memoryStore = new MemoryStore();
 	private modelManager: ModelManager;
 	private approvalManager?: ApprovalManager;
+	private mediaStore?: MediaStore;
+	private leakDetector?: LeakDetector;
 
-	constructor(modelManager?: ModelManager, approvalManager?: ApprovalManager) {
+	constructor(
+		modelManager?: ModelManager,
+		approvalManager?: ApprovalManager,
+		mediaStore?: MediaStore,
+		leakDetector?: LeakDetector,
+	) {
 		this.modelManager = modelManager ?? new ModelManager();
 		this.approvalManager = approvalManager;
+		this.mediaStore = mediaStore;
+		this.leakDetector = leakDetector;
 	}
 
 	/** Generate a short title for a session (fire-and-forget). */
@@ -64,8 +84,18 @@ export class AgentRuntime {
 		isOwner?: boolean;
 		channelId?: string;
 		imageUrls?: string[];
+		signal?: AbortSignal;
 	}): AsyncGenerator<AgentEvent> {
-		const { agentId, sessionKey, message, config, isOwner = true, channelId, imageUrls } = params;
+		const {
+			agentId,
+			sessionKey,
+			message,
+			config,
+			isOwner = true,
+			channelId,
+			imageUrls,
+			signal,
+		} = params;
 
 		const agentConfig = config.agents.find((a) => a.id === agentId);
 		if (!agentConfig) {
@@ -127,8 +157,8 @@ export class AgentRuntime {
 						]
 					: message;
 
-			// Build messages
-			const systemPrompt = agentConfig.systemPrompt + memoryContext;
+			// Build messages with safety suffix for prompt injection defense
+			const systemPrompt = agentConfig.systemPrompt + memoryContext + SAFETY_SUFFIX;
 			const messages: CoreMessage[] = [
 				{ role: "system", content: systemPrompt },
 				...history,
@@ -151,8 +181,10 @@ export class AgentRuntime {
 				agentId,
 				config,
 				memoryStore: config.memory.enabled ? this.memoryStore : undefined,
+				mediaStore: this.mediaStore,
 				sessionKey,
 				approvalManager: this.approvalManager,
+				agentCapabilities: agentConfig.capabilities,
 			});
 
 			// Stream execution with failure tracking
@@ -165,16 +197,45 @@ export class AgentRuntime {
 					messages,
 					tools,
 					maxSteps: 25,
+					abortSignal: signal,
 				});
 
 				for await (const part of result.fullStream) {
 					switch (part.type) {
 						case "text-delta":
+							// Leak detection: scan output for credential patterns
+							if (this.leakDetector && this.leakDetector.size > 0) {
+								const check = this.leakDetector.scan(fullText + part.textDelta);
+								if (check.leaked) {
+									console.error(
+										`[security] Credential leak detected in LLM output for session ${sessionKey}`,
+									);
+									yield {
+										type: "error",
+										sessionKey,
+										message: "Response blocked: potential credential leak detected",
+									};
+									return;
+								}
+							}
 							fullText += part.textDelta;
 							yield { type: "delta", sessionKey, text: part.textDelta };
 							break;
 
+						case "reasoning": {
+							yield { type: "thinking", sessionKey, text: part.textDelta };
+							break;
+						}
+
 						case "tool-call": {
+							// Data flow heuristic check before tool execution
+							const flowCheck = checkDataFlow(part.toolName, part.args as Record<string, unknown>);
+							if (flowCheck) {
+								console.warn(
+									`[security] Data flow rule "${flowCheck.rule}" triggered for ${part.toolName} in session ${sessionKey}`,
+								);
+							}
+
 							yield {
 								type: "tool_call",
 								sessionKey,
@@ -185,11 +246,24 @@ export class AgentRuntime {
 						}
 
 						case "tool-result": {
+							// Wrap tool results with boundary markers for injection defense
+							const resultStr =
+								typeof part.result === "string" ? part.result : JSON.stringify(part.result);
+							const wrappedResult = wrapUntrustedContent(resultStr, part.toolName);
+
+							// Check for injection patterns (log warning)
+							const injection = detectInjection(resultStr);
+							if (injection.detected) {
+								console.warn(
+									`[security] Injection pattern detected in ${part.toolName} result for session ${sessionKey}: ${injection.patterns.join(", ")}`,
+								);
+							}
+
 							yield {
 								type: "tool_result",
 								sessionKey,
 								name: part.toolName,
-								result: part.result,
+								result: wrappedResult,
 								duration: 0,
 							};
 							break;
@@ -209,6 +283,23 @@ export class AgentRuntime {
 				usage = await result.usage;
 				this.modelManager.reportSuccess(provider, profileId);
 			} catch (streamErr) {
+				// Check if this was an intentional abort (steering/cancel)
+				if (signal?.aborted) {
+					// Save partial output so context is preserved
+					if (fullText) {
+						this.sessionStore.saveMessages(sessionKey, [
+							{ role: "user", content: message },
+							{
+								role: "assistant",
+								content: `${fullText}\n\n[interrupted]`,
+								model: agentConfig.model,
+								tokenCount: 0,
+							},
+						]);
+					}
+					yield { type: "aborted", sessionKey, partial: fullText };
+					return;
+				}
 				this.modelManager.reportFailure(provider, profileId);
 				throw streamErr;
 			}

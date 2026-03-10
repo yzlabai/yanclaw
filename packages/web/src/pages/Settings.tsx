@@ -94,50 +94,50 @@ export function Settings() {
 			<h2 className="text-lg font-semibold mb-6">Settings</h2>
 			<div className="space-y-6 max-w-xl">
 				<section>
-					<h3 className="text-sm font-medium text-gray-300 mb-3">Model API Keys</h3>
+					<h3 className="text-sm font-medium text-foreground/80 mb-3">Model API Keys</h3>
 					<div className="space-y-4">
 						<div>
-							<label className="block text-sm text-gray-400 mb-1">Anthropic API Key</label>
+							<label className="block text-sm text-muted-foreground mb-1">Anthropic API Key</label>
 							<input
 								type="password"
 								value={anthropicKey}
 								onChange={(e) => setAnthropicKey(e.target.value)}
 								placeholder="sk-ant-..."
-								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-gray-400 mb-1">OpenAI API Key</label>
+							<label className="block text-sm text-muted-foreground mb-1">OpenAI API Key</label>
 							<input
 								type="password"
 								value={openaiKey}
 								onChange={(e) => setOpenaiKey(e.target.value)}
 								placeholder="sk-..."
-								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-gray-400 mb-1">Google AI API Key</label>
+							<label className="block text-sm text-muted-foreground mb-1">Google AI API Key</label>
 							<input
 								type="password"
 								value={googleKey}
 								onChange={(e) => setGoogleKey(e.target.value)}
 								placeholder="AIza..."
-								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
 							/>
 						</div>
 					</div>
 				</section>
 
 				<section>
-					<h3 className="text-sm font-medium text-gray-300 mb-3">Default Agent</h3>
+					<h3 className="text-sm font-medium text-foreground/80 mb-3">Default Agent</h3>
 					<div className="space-y-4">
 						<div>
-							<label className="block text-sm text-gray-400 mb-1">Model</label>
+							<label className="block text-sm text-muted-foreground mb-1">Model</label>
 							<select
 								value={model}
 								onChange={(e) => setModel(e.target.value)}
-								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
 							>
 								<optgroup label="Anthropic">
 									<option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
@@ -157,27 +157,27 @@ export function Settings() {
 							</select>
 						</div>
 						<div>
-							<label className="block text-sm text-gray-400 mb-1">System Prompt</label>
+							<label className="block text-sm text-muted-foreground mb-1">System Prompt</label>
 							<textarea
 								value={systemPrompt}
 								onChange={(e) => setSystemPrompt(e.target.value)}
 								placeholder="You are a helpful assistant."
 								rows={4}
-								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring resize-y"
 							/>
 						</div>
 					</div>
 				</section>
 
 				<section>
-					<h3 className="text-sm font-medium text-gray-300 mb-3">Gateway</h3>
+					<h3 className="text-sm font-medium text-foreground/80 mb-3">Gateway</h3>
 					<div>
-						<label className="block text-sm text-gray-400 mb-1">Port</label>
+						<label className="block text-sm text-muted-foreground mb-1">Port</label>
 						<input
 							type="number"
 							value={port}
 							onChange={(e) => setPort(Number(e.target.value))}
-							className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+							className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
 						/>
 					</div>
 				</section>
@@ -186,7 +186,7 @@ export function Settings() {
 					type="button"
 					onClick={handleSave}
 					disabled={saving}
-					className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg transition-colors"
+					className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground px-6 py-2 rounded-lg transition-colors"
 				>
 					{saving ? "Saving..." : "Save Settings"}
 				</button>

@@ -43,6 +43,49 @@ function expandGroups(names: string[]): string[] {
 	return result;
 }
 
+/** Capabilities required by each tool. */
+const TOOL_CAPABILITIES: Record<string, string[]> = {
+	shell: ["exec:shell"],
+	file_read: ["fs:read"],
+	file_write: ["fs:write"],
+	file_edit: ["fs:write"],
+	web_search: ["net:http"],
+	web_fetch: ["net:http"],
+	browser_navigate: ["browser:navigate"],
+	browser_screenshot: ["browser:capture"],
+	browser_action: ["browser:interact"],
+	memory_store: ["memory:write"],
+	memory_search: ["memory:read"],
+	memory_delete: ["memory:write"],
+};
+
+/** Predefined capability presets. */
+const CAPABILITY_PRESETS: Record<string, string[]> = {
+	"safe-reader": ["fs:read", "memory:read"],
+	researcher: ["fs:read", "net:http", "memory:read", "memory:write"],
+	developer: ["fs:read", "fs:write", "exec:shell", "net:http", "memory:read", "memory:write"],
+	"full-access": ["*"],
+};
+
+function resolveCapabilities(caps: string | string[] | undefined): Set<string> | null {
+	if (caps === undefined) return null; // No capability restriction
+	if (typeof caps === "string") {
+		const preset = CAPABILITY_PRESETS[caps];
+		if (!preset) {
+			console.warn(`[tools] Unknown capability preset: ${caps}, treating as full-access`);
+			return null;
+		}
+		return new Set(preset);
+	}
+	return new Set(caps);
+}
+
+function hasCapabilities(toolName: string, granted: Set<string>): boolean {
+	if (granted.has("*")) return true;
+	const required = TOOL_CAPABILITIES[toolName] ?? [];
+	return required.every((cap) => granted.has(cap));
+}
+
 export function isOwnerOnlyTool(toolName: string): boolean {
 	return OWNER_ONLY_TOOLS.has(toolName);
 }
@@ -110,8 +153,10 @@ export function createToolset(opts: {
 	agentId?: string;
 	config?: Config;
 	memoryStore?: MemoryStore;
+	mediaStore?: import("../../media").MediaStore;
 	sessionKey?: string;
 	approvalManager?: ApprovalManager;
+	agentCapabilities?: string | string[];
 }) {
 	const { workspaceDir, toolsConfig, agentTools, channelId, isOwner = true } = opts;
 	const timeout = toolsConfig.exec.timeout;
@@ -123,9 +168,13 @@ export function createToolset(opts: {
 			? createDockerShellTool({ workspaceDir, timeout, maxOutput, sandbox })
 			: createShellTool({ workspaceDir, timeout, maxOutput }),
 		file_read: createFileReadTool({ workspaceDir, maxOutput }),
-		file_write: createFileWriteTool({ workspaceDir }),
+		file_write: createFileWriteTool({
+			workspaceDir,
+			mediaStore: opts.mediaStore,
+			sessionKey: opts.sessionKey,
+		}),
 		file_edit: createFileEditTool({ workspaceDir }),
-		web_fetch: createWebFetchTool({ maxOutput }),
+		web_fetch: createWebFetchTool({ maxOutput, network: opts.config?.security?.network }),
 		web_search: createWebSearchTool({ maxOutput }),
 		browser_navigate: createBrowserNavigateTool({ maxOutput }),
 		browser_screenshot: createBrowserScreenshotTool(),
@@ -150,14 +199,18 @@ export function createToolset(opts: {
 		});
 	}
 
-	// Filter by policy + ownerOnly
+	// Resolve capability constraints
+	const grantedCaps = resolveCapabilities(opts.agentCapabilities);
+
+	// Filter by policy + ownerOnly + capabilities
 	const tools: Record<string, ReturnType<typeof createShellTool>> = {};
 	for (const [name, t] of Object.entries(allTools)) {
 		// Non-owners cannot use ownerOnly tools
 		if (!isOwner && isOwnerOnlyTool(name)) continue;
-		if (isToolAllowed(name, toolsConfig, agentTools, channelId)) {
-			tools[name] = t;
-		}
+		if (!isToolAllowed(name, toolsConfig, agentTools, channelId)) continue;
+		// Capability-based filtering
+		if (grantedCaps && !hasCapabilities(name, grantedCaps)) continue;
+		tools[name] = t;
 	}
 
 	// Wrap shell tool with approval if configured

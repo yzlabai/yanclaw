@@ -74,6 +74,24 @@ export const mediaFiles = sqliteTable(
 	],
 );
 
+export const auditLogs = sqliteTable(
+	"audit_logs",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		timestamp: text("timestamp").notNull(),
+		actor: text("actor").notNull(),
+		action: text("action").notNull(),
+		resource: text("resource"),
+		detail: text("detail"),
+		sessionKey: text("session_key"),
+		result: text("result"),
+	},
+	(table) => [
+		index("idx_audit_timestamp").on(table.timestamp),
+		index("idx_audit_action").on(table.action),
+	],
+);
+
 export const memories = sqliteTable(
 	"memories",
 	{

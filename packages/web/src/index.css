@@ -20,3 +20,47 @@
 	--color-card: oklch(0.17 0 0);
 	--color-card-foreground: oklch(0.985 0 0);
 }
+
+/* Light theme: follows system preference OR manual override via data-theme="light" */
+@media (prefers-color-scheme: light) {
+	:root:not([data-theme="dark"]) {
+		--color-background: oklch(0.985 0 0);
+		--color-foreground: oklch(0.145 0 0);
+		--color-primary: oklch(0.45 0.2 260);
+		--color-primary-foreground: oklch(0.985 0 0);
+		--color-secondary: oklch(0.92 0.01 260);
+		--color-secondary-foreground: oklch(0.2 0 0);
+		--color-muted: oklch(0.93 0.005 260);
+		--color-muted-foreground: oklch(0.45 0 0);
+		--color-accent: oklch(0.93 0.005 260);
+		--color-accent-foreground: oklch(0.2 0 0);
+		--color-destructive: oklch(0.55 0.2 27);
+		--color-destructive-foreground: oklch(0.985 0 0);
+		--color-border: oklch(0.85 0 0);
+		--color-input: oklch(0.85 0 0);
+		--color-ring: oklch(0.45 0.2 260);
+		--color-card: oklch(0.97 0 0);
+		--color-card-foreground: oklch(0.145 0 0);
+	}
+}
+
+/* Manual light override when system prefers dark */
+:root[data-theme="light"] {
+	--color-background: oklch(0.985 0 0);
+	--color-foreground: oklch(0.145 0 0);
+	--color-primary: oklch(0.45 0.2 260);
+	--color-primary-foreground: oklch(0.985 0 0);
+	--color-secondary: oklch(0.92 0.01 260);
+	--color-secondary-foreground: oklch(0.2 0 0);
+	--color-muted: oklch(0.93 0.005 260);
+	--color-muted-foreground: oklch(0.45 0 0);
+	--color-accent: oklch(0.93 0.005 260);
+	--color-accent-foreground: oklch(0.2 0 0);
+	--color-destructive: oklch(0.55 0.2 27);
+	--color-destructive-foreground: oklch(0.985 0 0);
+	--color-border: oklch(0.85 0 0);
+	--color-input: oklch(0.85 0 0);
+	--color-ring: oklch(0.45 0.2 260);
+	--color-card: oklch(0.97 0 0);
+	--color-card-foreground: oklch(0.145 0 0);
+}

@@ -179,6 +179,25 @@ const MIGRATIONS = [
 			END;
 		`,
 	},
+	{
+		version: 3,
+		name: "audit_logs",
+		sql: `
+			CREATE TABLE IF NOT EXISTS audit_logs (
+				id            INTEGER PRIMARY KEY AUTOINCREMENT,
+				timestamp     TEXT NOT NULL,
+				actor         TEXT NOT NULL,
+				action        TEXT NOT NULL,
+				resource      TEXT,
+				detail        TEXT,
+				session_key   TEXT,
+				result        TEXT
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp);
+			CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
+		`,
+	},
 ];
 
 export function closeDatabase(): void {

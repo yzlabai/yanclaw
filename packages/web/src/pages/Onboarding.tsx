@@ -129,18 +129,20 @@ export function Onboarding() {
 							<div
 								className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${
 									i < step
-										? "bg-green-600 text-white"
+										? "bg-green-600 text-foreground"
 										: i === step
-											? "bg-blue-600 text-white"
-											: "bg-gray-700 text-gray-400"
+											? "bg-primary text-foreground"
+											: "bg-accent text-muted-foreground"
 								}`}
 							>
 								{i < step ? "\u2713" : i + 1}
 							</div>
-							<span className={`text-sm truncate ${i === step ? "text-white" : "text-gray-500"}`}>
+							<span
+								className={`text-sm truncate ${i === step ? "text-foreground" : "text-muted-foreground"}`}
+							>
 								{label}
 							</span>
-							{i < STEPS.length - 1 && <div className="flex-1 h-px bg-gray-700 min-w-4" />}
+							{i < STEPS.length - 1 && <div className="flex-1 h-px bg-accent min-w-4" />}
 						</div>
 					))}
 				</div>
@@ -149,14 +151,14 @@ export function Onboarding() {
 				{step === 0 && (
 					<div className="space-y-6">
 						<div>
-							<h2 className="text-xl font-semibold text-white mb-1">Welcome to YanClaw</h2>
-							<p className="text-gray-400 text-sm">
+							<h2 className="text-xl font-semibold text-foreground mb-1">Welcome to YanClaw</h2>
+							<p className="text-muted-foreground text-sm">
 								Let's get you started. First, choose your AI model provider and enter your API key.
 							</p>
 						</div>
 
 						<div>
-							<label className="block text-sm text-gray-300 mb-2">Provider</label>
+							<label className="block text-sm text-foreground/80 mb-2">Provider</label>
 							<div className="flex gap-3">
 								<button
 									type="button"
@@ -166,8 +168,8 @@ export function Onboarding() {
 									}}
 									className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-colors ${
 										provider === "anthropic"
-											? "border-blue-500 bg-blue-500/10 text-blue-400"
-											: "border-gray-700 text-gray-400 hover:border-gray-600"
+											? "border-primary bg-primary/10 text-primary"
+											: "border-border text-muted-foreground hover:border-border"
 									}`}
 								>
 									Anthropic
@@ -180,8 +182,8 @@ export function Onboarding() {
 									}}
 									className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-colors ${
 										provider === "openai"
-											? "border-blue-500 bg-blue-500/10 text-blue-400"
-											: "border-gray-700 text-gray-400 hover:border-gray-600"
+											? "border-primary bg-primary/10 text-primary"
+											: "border-border text-muted-foreground hover:border-border"
 									}`}
 								>
 									OpenAI
@@ -194,8 +196,8 @@ export function Onboarding() {
 									}}
 									className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-colors ${
 										provider === "google"
-											? "border-blue-500 bg-blue-500/10 text-blue-400"
-											: "border-gray-700 text-gray-400 hover:border-gray-600"
+											? "border-primary bg-primary/10 text-primary"
+											: "border-border text-muted-foreground hover:border-border"
 									}`}
 								>
 									Google
@@ -204,7 +206,7 @@ export function Onboarding() {
 						</div>
 
 						<div>
-							<label className="block text-sm text-gray-300 mb-1">API Key</label>
+							<label className="block text-sm text-foreground/80 mb-1">API Key</label>
 							<input
 								type="password"
 								value={apiKey}
@@ -216,16 +218,16 @@ export function Onboarding() {
 											? "AIza..."
 											: "sk-..."
 								}
-								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
 							/>
 						</div>
 
 						<div>
-							<label className="block text-sm text-gray-300 mb-1">Default Model</label>
+							<label className="block text-sm text-foreground/80 mb-1">Default Model</label>
 							<select
 								value={model}
 								onChange={(e) => setModel(e.target.value)}
-								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
 							>
 								{modelOptions.map((opt) => (
 									<option key={opt.value} value={opt.value}>
@@ -241,7 +243,7 @@ export function Onboarding() {
 							type="button"
 							onClick={saveModelConfig}
 							disabled={!apiKey || saving}
-							className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2.5 rounded-lg transition-colors font-medium"
+							className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground py-2.5 rounded-lg transition-colors font-medium"
 						>
 							{saving ? "Saving..." : "Continue"}
 						</button>
@@ -252,39 +254,39 @@ export function Onboarding() {
 				{step === 1 && (
 					<div className="space-y-6">
 						<div>
-							<h2 className="text-xl font-semibold text-white mb-1">Connect Channels</h2>
-							<p className="text-gray-400 text-sm">
+							<h2 className="text-xl font-semibold text-foreground mb-1">Connect Channels</h2>
+							<p className="text-muted-foreground text-sm">
 								Optionally connect messaging channels. You can always do this later in Settings.
 							</p>
 						</div>
 
 						<div>
-							<h3 className="text-sm font-medium text-gray-300 mb-2">Telegram Bot</h3>
+							<h3 className="text-sm font-medium text-foreground/80 mb-2">Telegram Bot</h3>
 							<input
 								type="password"
 								value={telegramToken}
 								onChange={(e) => setTelegramToken(e.target.value)}
 								placeholder="Bot token from @BotFather"
-								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
 							/>
 						</div>
 
 						<div>
-							<h3 className="text-sm font-medium text-gray-300 mb-2">Slack Bot</h3>
+							<h3 className="text-sm font-medium text-foreground/80 mb-2">Slack Bot</h3>
 							<div className="space-y-3">
 								<input
 									type="password"
 									value={slackBotToken}
 									onChange={(e) => setSlackBotToken(e.target.value)}
 									placeholder="Bot token (xoxb-...)"
-									className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
 								/>
 								<input
 									type="password"
 									value={slackAppToken}
 									onChange={(e) => setSlackAppToken(e.target.value)}
 									placeholder="App token (xapp-...)"
-									className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
 								/>
 							</div>
 						</div>
@@ -295,7 +297,7 @@ export function Onboarding() {
 							<button
 								type="button"
 								onClick={() => setStep(2)}
-								className="flex-1 border border-gray-700 text-gray-300 hover:bg-gray-800 py-2.5 rounded-lg transition-colors font-medium"
+								className="flex-1 border border-border text-foreground/80 hover:bg-muted py-2.5 rounded-lg transition-colors font-medium"
 							>
 								Skip
 							</button>
@@ -303,7 +305,7 @@ export function Onboarding() {
 								type="button"
 								onClick={saveChannelConfig}
 								disabled={saving || (!telegramToken && !slackBotToken)}
-								className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2.5 rounded-lg transition-colors font-medium"
+								className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground py-2.5 rounded-lg transition-colors font-medium"
 							>
 								{saving ? "Saving..." : "Save & Continue"}
 							</button>
@@ -316,8 +318,8 @@ export function Onboarding() {
 					<div className="space-y-6 text-center">
 						<div className="text-5xl">&#127881;</div>
 						<div>
-							<h2 className="text-xl font-semibold text-white mb-2">You're All Set!</h2>
-							<p className="text-gray-400 text-sm">
+							<h2 className="text-xl font-semibold text-foreground mb-2">You're All Set!</h2>
+							<p className="text-muted-foreground text-sm">
 								YanClaw is ready to use. Start a conversation or explore the settings to customize
 								further.
 							</p>
@@ -326,7 +328,7 @@ export function Onboarding() {
 						<button
 							type="button"
 							onClick={() => navigate("/")}
-							className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg transition-colors font-medium"
+							className="w-full bg-primary hover:bg-primary/90 text-foreground py-2.5 rounded-lg transition-colors font-medium"
 						>
 							Start Chatting
 						</button>

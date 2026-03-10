@@ -814,36 +814,119 @@ async fn stop_gateway() -> Result<(), String> { /* 终止子进程 */ }
 
 ## F13. 安全模型
 
-### F13.1 访问控制层级
+### F13.1 访问控制层级（纵深防御）
 
 ```
-1. Gateway 认证（Bearer Token）
+1. Gateway 认证（Bearer Token + 自动轮转）
    ↓
-2. 通道 DM 策略（pairing / allowlist / open）
+2. WebSocket 票据认证（一次性 30s ticket）
    ↓
-3. 用户/群组白名单（allowFrom 列表）
+3. 滑动窗口速率限制（全局/chat/approval 三级）
    ↓
-4. 工具策略（allow / deny + 工具组）
+4. 通道 DM 策略（pairing / allowlist / open）
    ↓
-5. ownerOnly 检查（高风险工具仅 owner 可用）
+5. 用户/群组白名单（allowFrom 列表）
    ↓
-6. 执行审批（safeBins 白名单 / 用户审批）
+6. 能力模型（preset 或自定义能力数组，per-agent）
    ↓
-7. 执行沙箱（Docker 隔离，可选）
+7. 工具策略（allow / deny + 工具组）
+   ↓
+8. ownerOnly 检查（高风险工具仅 owner 可用）
+   ↓
+9. 数据流启发式检查（shell 外泄 / 敏感路径检测）
+   ↓
+10. 执行审批（safeBins 白名单 / 用户审批）
+    ↓
+11. 执行沙箱（Docker 隔离，可选）
 ```
 
-### F13.2 敏感数据保护
+### F13.2 凭证加密存储（Vault）
 
-- API Key 存储在本地配置文件，不上传
+- AES-256-GCM 加密所有 API Key
+- 密钥通过 machine-id + scryptSync 派生（Windows 注册表 / macOS IOPlatformUUID / Linux dbus）
+- 回退方案：生成随机 ID 持久化到 `~/.yanclaw/.machine-id`
+- 配置语法 `$vault:key_name` 自动解引用
+- CLI 迁移脚本 `vault-migrate.ts`
+
+### F13.3 凭证泄漏检测（LeakDetector）
+
+- 注册所有已知 API Key 的前缀（前 16 字符）
+- 实时扫描 LLM 输出文本
+- 命中立即阻断响应
+
+### F13.4 WebSocket 票据认证
+
+- `POST /api/ws/ticket` 签发一次性票据（需 Bearer Token）
+- 票据 30 秒 TTL，使用后立即销毁
+- 解决 WebSocket 无法携带 Authorization header 的问题
+
+### F13.5 速率限制
+
+- 滑动窗口算法，内存 Map 实现
+- 三级限制：全局 60/min、chat 10/min、approval 30/min
+- 优先使用 auth token 后缀做 key（防 IP 伪造）
+- 定时清理过期条目
+
+### F13.6 提示注入防御
+
+- `<tool_result source="...">` 边界标记包裹所有工具返回
+- 8 种注入模式正则检测（精确匹配避免误报）
+- 系统提示安全后缀（SAFETY_SUFFIX）
+- 可配置阻断或仅告警
+
+### F13.7 数据流启发式（DataFlow）
+
+- shell 外泄检测：curl/wget POST、nc/ncat/socat/rsync/scp/sftp/ssh
+- 敏感路径写入检测：.bashrc/.profile/.zshrc/.env/.ssh/authorized_keys/crontab
+- 敏感路径读取检测：.ssh/.env/passwd/shadow/.aws/.kube
+- 可配置为阻断或仅告警
+
+### F13.8 网络白名单（SSRF 防护）
+
+- 私有地址阻断（127.x/10.x/172.16-31.x/192.168.x/::1/localhost）
+- 端口豁免列表（如 Ollama 11434、Gateway self）
+- Host 白名单支持通配符 `*.example.com`
+- 集成到 web_fetch 工具
+
+### F13.9 审计日志
+
+- SQLite 缓冲写入（100ms 或 50 条触发 flush）
+- 查询 API `GET /api/audit`（action/actor/时间范围筛选，分页）
+- 自动按天数清理（默认 90 天）
+- 安全关闭时 flush 残留缓冲
+
+### F13.10 异常频率检测
+
+- 每工具每会话滑动窗口（1 分钟）
+- warn / critical 分级阈值（shell 10/20、file_write 30/50、其他 80/100）
+- 可配置动作：log / pause / abort
+- 定期清理过期计数、会话结束清理
+
+### F13.11 Token 自动轮转
+
+- 可配置轮转间隔（`intervalHours`）
+- Grace period 内新旧 token 同时有效
+- 先写文件再更新内存（写入失败不轮转）
+- 轮转回调通知 Gateway 更新内存配置
+
+### F13.12 能力模型（Capabilities）
+
+- 四种预设：`safe-reader`（只读文件+记忆）、`researcher`（读+网络+记忆）、`developer`（读写+shell+网络+记忆）、`full-access`（全部）
+- 自定义能力数组：`["fs:read", "net:http", "memory:read"]`
+- Per-agent 配置，与 toolPolicy + ownerOnly 三层叠加过滤
+
+### F13.13 Symlink 防护
+
+- file_read / file_write / file_edit 使用 `realpath()` 二次校验
+- 阻止符号链接逃逸 workspace 目录
+- 文件不存在时回退到预解析检查（write 场景）
+
+### F13.14 敏感数据保护
+
 - 支持环境变量引用 `${VAR}`（避免明文写入配置文件）
+- 支持 Vault 加密引用 `$vault:key_name`
 - 前端 API 返回时遮蔽敏感字段
-- 配置文件权限建议 `600`
-
-### F13.3 网络安全
-
 - Gateway 默认绑定 loopback
-- web_fetch SSRF 防护
-- WebSocket 连接需认证
 
 ---
 

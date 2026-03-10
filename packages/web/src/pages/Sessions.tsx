@@ -124,19 +124,19 @@ export function Sessions() {
 		<div className="p-6 h-full flex flex-col">
 			<div className="flex items-center justify-between mb-4">
 				<h2 className="text-lg font-semibold">Sessions</h2>
-				<span className="text-sm text-gray-500">{total} total</span>
+				<span className="text-sm text-muted-foreground">{total} total</span>
 			</div>
 
 			{/* Filters */}
 			<div className="flex gap-3 mb-4">
 				<div className="relative flex-1 max-w-xs">
-					<Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-500" />
+					<Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
 					<input
 						type="text"
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
 						placeholder="Search sessions..."
-						className="w-full bg-gray-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+						className="w-full bg-muted rounded-lg pl-9 pr-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary"
 					/>
 				</div>
 				<select
@@ -145,7 +145,7 @@ export function Sessions() {
 						setAgentFilter(e.target.value);
 						setPage(0);
 					}}
-					className="bg-gray-800 rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+					className="bg-muted rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
 				>
 					<option value="">All Agents</option>
 					{agents.map((a) => (
@@ -159,13 +159,13 @@ export function Sessions() {
 			{/* Sessions list */}
 			<div className="flex-1 overflow-y-auto">
 				{filtered.length === 0 ? (
-					<div className="text-gray-500 text-center mt-20">No sessions found.</div>
+					<div className="text-muted-foreground text-center mt-20">No sessions found.</div>
 				) : (
 					<div className="space-y-1">
 						{filtered.map((s) => (
 							<div
 								key={s.key}
-								className="group flex items-center gap-4 px-4 py-3 rounded-lg hover:bg-gray-800/60 transition-colors"
+								className="group flex items-center gap-4 px-4 py-3 rounded-lg hover:bg-muted/60 transition-colors"
 							>
 								<button
 									type="button"
@@ -173,19 +173,19 @@ export function Sessions() {
 									className="flex-1 min-w-0 text-left"
 								>
 									<div className="flex items-center gap-2">
-										<span className="text-sm font-medium text-white truncate">
+										<span className="text-sm font-medium text-foreground truncate">
 											{s.title || s.key.split(":").pop()}
 										</span>
-										<span className="text-xs text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">
+										<span className="text-xs text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded">
 											{agentName(s.agentId)}
 										</span>
 										{s.channel && (
-											<span className="text-xs text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">
+											<span className="text-xs text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded">
 												{s.channel}
 											</span>
 										)}
 									</div>
-									<div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+									<div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
 										<span className="flex items-center gap-1">
 											<MessageSquare className="size-3" />
 											{s.messageCount}
@@ -203,14 +203,14 @@ export function Sessions() {
 										type="button"
 										onClick={() => exportSession(s.key, "json")}
 										title="Export JSON"
-										className="text-gray-500 hover:text-blue-400 p-1"
+										className="text-muted-foreground hover:text-primary p-1"
 									>
 										<Download className="size-4" />
 									</button>
 									<button
 										type="button"
 										onClick={() => deleteSession(s.key)}
-										className="text-gray-500 hover:text-red-400 p-1"
+										className="text-muted-foreground hover:text-red-400 p-1"
 									>
 										<Trash2 className="size-4" />
 									</button>
@@ -223,23 +223,23 @@ export function Sessions() {
 
 			{/* Pagination */}
 			{totalPages > 1 && (
-				<div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-gray-800">
+				<div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-border">
 					<button
 						type="button"
 						onClick={() => setPage((p) => Math.max(0, p - 1))}
 						disabled={page === 0}
-						className="px-3 py-1 text-sm rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+						className="px-3 py-1 text-sm rounded-lg bg-muted text-foreground/80 hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 					>
 						Prev
 					</button>
-					<span className="text-sm text-gray-500">
+					<span className="text-sm text-muted-foreground">
 						{page + 1} / {totalPages}
 					</span>
 					<button
 						type="button"
 						onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
 						disabled={page >= totalPages - 1}
-						className="px-3 py-1 text-sm rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+						className="px-3 py-1 text-sm rounded-lg bg-muted text-foreground/80 hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 					>
 						Next
 					</button>

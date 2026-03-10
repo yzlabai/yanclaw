@@ -1,6 +1,7 @@
-import { ArrowUp, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, Menu, Paperclip, Square, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainerContent, ChatContainerRoot } from "../components/prompt-kit/chat-container";
+import { FileAttachment } from "../components/prompt-kit/file-attachment";
 import { TypingLoader } from "../components/prompt-kit/loader";
 import { Message, MessageAvatar, MessageContent } from "../components/prompt-kit/message";
 import {
@@ -9,15 +10,37 @@ import {
 	PromptInputTextarea,
 } from "../components/prompt-kit/prompt-input";
 import { ScrollButton } from "../components/prompt-kit/scroll-button";
+import { ThinkingPanel } from "../components/prompt-kit/thinking-panel";
 import { ToolCall } from "../components/prompt-kit/tool-call";
 import { Button } from "../components/ui/button";
-import { type AgentEvent, API_BASE, apiFetch, sendChatMessage, uploadMedia } from "../lib/api";
+import {
+	type AgentEvent,
+	API_BASE,
+	apiFetch,
+	cancelChat,
+	sendChatMessage,
+	steerChat,
+	uploadMedia,
+} from "../lib/api";
+
+interface AttachmentInfo {
+	filename: string;
+	size: number;
+	mimeType: string;
+	url: string;
+}
 
 interface ChatMessage {
 	role: "user" | "assistant";
 	content: string;
 	toolCalls?: { name: string; args: unknown; result?: unknown }[];
+	attachments?: AttachmentInfo[];
+	thinking?: string;
+	thinkingStartedAt?: number;
+	thinkingDurationMs?: number;
 	isStreaming?: boolean;
+	isPending?: boolean;
+	isAborted?: boolean;
 }
 
 interface SessionInfo {
@@ -47,6 +70,7 @@ export function Chat() {
 	const [agents, setAgents] = useState<AgentInfo[]>([]);
 	const [currentAgent, setCurrentAgent] = useState("main");
 	const [currentSession, setCurrentSession] = useState<string | null>(null);
+	const [showSidebar, setShowSidebar] = useState(false);
 
 	useEffect(() => {
 		apiFetch(`${API_BASE}/api/agents`)
@@ -166,10 +190,40 @@ export function Chat() {
 
 	const handleSubmit = async () => {
 		const text = input.trim();
-		if ((!text && attachments.length === 0) || isStreaming) return;
+		if (!text && attachments.length === 0) return;
 
 		const sessionKey = getSessionKey();
 		if (!currentSession) setCurrentSession(sessionKey);
+
+		// If streaming, send as steering message instead
+		if (isStreaming && text) {
+			setInput("");
+			// Add user message as pending
+			setMessages((prev) => [...prev, { role: "user", content: text, isPending: true }]);
+			try {
+				const result = await steerChat(sessionKey, text);
+				if (result.intent === "cancel") {
+					// Mark the pending message as no longer pending
+					setMessages((prev) => {
+						const updated = [...prev];
+						const last = updated[updated.length - 1];
+						if (last?.role === "user" && last.isPending) {
+							updated[updated.length - 1] = { ...last, isPending: false };
+						}
+						return updated;
+					});
+				}
+				// For supplement/redirect, the message is queued server-side
+				// and will be processed after current run finishes
+			} catch {
+				// If steer fails, remove the pending message
+				setMessages((prev) => {
+					if (prev[prev.length - 1]?.isPending) return prev.slice(0, -1);
+					return prev;
+				});
+			}
+			return;
+		}
 
 		const filesToUpload = [...attachments];
 		setInput("");
@@ -183,11 +237,18 @@ export function Chat() {
 
 		// Upload attachments
 		let imageUrls: string[] | undefined;
+		let uploadedAttachments: AttachmentInfo[] | undefined;
 		if (filesToUpload.length > 0) {
 			setUploading(true);
 			try {
 				const results = await Promise.all(filesToUpload.map((f) => uploadMedia(f, sessionKey)));
 				imageUrls = results.map((r) => `${API_BASE}/api/media/${r.id}`);
+				uploadedAttachments = results.map((r) => ({
+					filename: r.filename,
+					size: r.size,
+					mimeType: r.mimeType,
+					url: `${API_BASE}/api/media/${r.id}`,
+				}));
 			} catch {
 				setMessages((prev) => {
 					const updated = [...prev];
@@ -208,6 +269,18 @@ export function Chat() {
 			setUploading(false);
 		}
 
+		// Attach uploaded files to user message
+		if (uploadedAttachments) {
+			setMessages((prev) => {
+				const updated = [...prev];
+				const userMsgIdx = updated.length - 2;
+				if (userMsgIdx >= 0 && updated[userMsgIdx].role === "user") {
+					updated[userMsgIdx] = { ...updated[userMsgIdx], attachments: uploadedAttachments };
+				}
+				return updated;
+			});
+		}
+
 		try {
 			await sendChatMessage(
 				currentAgent,
@@ -223,6 +296,21 @@ export function Chat() {
 									updated[updated.length - 1] = {
 										...last,
 										content: last.content + event.text,
+									};
+								}
+								return updated;
+							});
+							break;
+
+						case "thinking":
+							setMessages((prev) => {
+								const updated = [...prev];
+								const last = updated[updated.length - 1];
+								if (last?.role === "assistant") {
+									updated[updated.length - 1] = {
+										...last,
+										thinking: (last.thinking ?? "") + event.text,
+										thinkingStartedAt: last.thinkingStartedAt ?? Date.now(),
 									};
 								}
 								return updated;
@@ -253,8 +341,80 @@ export function Chat() {
 									if (callIdx >= 0) {
 										calls[callIdx] = { ...calls[callIdx], result: event.result };
 									}
-									updated[updated.length - 1] = { ...last, toolCalls: calls };
+
+									// Extract media attachment from file_write results
+									let newAttachments = last.attachments;
+									if (event.name === "file_write" && typeof event.result === "string") {
+										try {
+											const parsed = JSON.parse(event.result) as {
+												mediaUrl?: string;
+												filename?: string;
+												mimeType?: string;
+												size?: number;
+											};
+											if (parsed.mediaUrl) {
+												newAttachments = [
+													...(newAttachments ?? []),
+													{
+														filename: parsed.filename ?? "file",
+														size: parsed.size ?? 0,
+														mimeType: parsed.mimeType ?? "application/octet-stream",
+														url: `${API_BASE}${parsed.mediaUrl}`,
+													},
+												];
+											}
+										} catch {
+											// Not JSON — ignore
+										}
+									}
+
+									updated[updated.length - 1] = {
+										...last,
+										toolCalls: calls,
+										attachments: newAttachments,
+									};
 								}
+								return updated;
+							});
+							break;
+
+						case "aborted":
+							setMessages((prev) => {
+								const updated = [...prev];
+								const last = updated[updated.length - 1];
+								if (last?.role === "assistant") {
+									updated[updated.length - 1] = {
+										...last,
+										isStreaming: false,
+										isAborted: true,
+										thinkingDurationMs: last.thinkingStartedAt
+											? Date.now() - last.thinkingStartedAt
+											: undefined,
+									};
+								}
+								return updated;
+							});
+							break;
+
+						case "steering_resume":
+							// A queued message is now being processed — clear pending flag
+							// and add new assistant response placeholder
+							setMessages((prev) => {
+								const updated = [...prev];
+								// Find and un-flag the pending user message
+								for (let k = updated.length - 1; k >= 0; k--) {
+									if (updated[k].role === "user" && updated[k].isPending) {
+										updated[k] = { ...updated[k], isPending: false };
+										break;
+									}
+								}
+								// Add new assistant placeholder
+								updated.push({
+									role: "assistant",
+									content: "",
+									isStreaming: true,
+									toolCalls: [],
+								});
 								return updated;
 							});
 							break;
@@ -264,7 +424,13 @@ export function Chat() {
 								const updated = [...prev];
 								const last = updated[updated.length - 1];
 								if (last?.role === "assistant") {
-									updated[updated.length - 1] = { ...last, isStreaming: false };
+									updated[updated.length - 1] = {
+										...last,
+										isStreaming: false,
+										thinkingDurationMs: last.thinkingStartedAt
+											? Date.now() - last.thinkingStartedAt
+											: undefined,
+									};
 								}
 								return updated;
 							});
@@ -318,95 +484,143 @@ export function Chat() {
 
 	const currentAgentName = agents.find((a) => a.id === currentAgent)?.name ?? currentAgent;
 
+	const sidebarContent = (
+		<>
+			<div className="p-3 border-b border-border">
+				<select
+					value={currentAgent}
+					onChange={(e) => {
+						setCurrentAgent(e.target.value);
+						startNewSession();
+					}}
+					className="w-full bg-muted rounded-lg px-3 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+				>
+					{agents.map((a) => (
+						<option key={a.id} value={a.id}>
+							{a.name}
+						</option>
+					))}
+				</select>
+			</div>
+
+			<div className="p-3 border-b border-border">
+				<button
+					type="button"
+					onClick={() => {
+						startNewSession();
+						setShowSidebar(false);
+					}}
+					className="w-full bg-muted hover:bg-accent text-foreground text-sm px-3 py-1.5 rounded-lg transition-colors"
+				>
+					+ New Chat
+				</button>
+			</div>
+
+			<div className="flex-1 overflow-y-auto">
+				{sessions.map((s) => (
+					<div
+						key={s.key}
+						className={`group flex items-center gap-1 px-3 py-2 cursor-pointer border-b border-border/50 transition-colors ${
+							currentSession === s.key
+								? "bg-muted text-foreground"
+								: "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+						}`}
+					>
+						<button
+							type="button"
+							onClick={() => {
+								loadSession(s.key);
+								setShowSidebar(false);
+							}}
+							className="flex-1 min-w-0 text-left"
+						>
+							<div className="text-sm truncate">{s.title || s.key.split(":").pop()}</div>
+							<div className="text-xs text-muted-foreground flex gap-2">
+								<span>{s.messageCount} msgs</span>
+								<span>{formatTime(s.updatedAt)}</span>
+							</div>
+						</button>
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								deleteSession(s.key);
+							}}
+							className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 text-xs px-1 transition-opacity"
+						>
+							x
+						</button>
+					</div>
+				))}
+			</div>
+		</>
+	);
+
 	return (
 		<div className="flex h-full">
-			{/* Session sidebar */}
-			<div className="w-64 border-r border-gray-800 flex flex-col">
-				<div className="p-3 border-b border-gray-800">
-					<select
-						value={currentAgent}
-						onChange={(e) => {
-							setCurrentAgent(e.target.value);
-							startNewSession();
-						}}
-						className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
-					>
-						{agents.map((a) => (
-							<option key={a.id} value={a.id}>
-								{a.name}
-							</option>
-						))}
-					</select>
-				</div>
+			{/* Desktop session sidebar */}
+			<div className="hidden md:flex w-64 border-r border-border flex-col">{sidebarContent}</div>
 
-				<div className="p-3 border-b border-gray-800">
+			{/* Mobile session sidebar overlay */}
+			{showSidebar && (
+				<div
+					className="fixed inset-0 bg-black/50 z-40 md:hidden"
+					onClick={() => setShowSidebar(false)}
+					onKeyDown={(e) => e.key === "Escape" && setShowSidebar(false)}
+					role="presentation"
+				/>
+			)}
+			<div
+				className={`fixed inset-y-0 left-0 w-72 bg-background border-r border-border flex flex-col z-50 transition-transform duration-200 md:hidden ${
+					showSidebar ? "translate-x-0" : "-translate-x-full"
+				}`}
+			>
+				<div className="flex items-center justify-between p-3 border-b border-border">
+					<span className="text-sm font-semibold">Sessions</span>
 					<button
 						type="button"
-						onClick={startNewSession}
-						className="w-full bg-gray-800 hover:bg-gray-700 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
+						onClick={() => setShowSidebar(false)}
+						className="p-1 text-muted-foreground hover:text-foreground"
 					>
-						+ New Chat
+						<X className="h-4 w-4" />
 					</button>
 				</div>
-
-				<div className="flex-1 overflow-y-auto">
-					{sessions.map((s) => (
-						<div
-							key={s.key}
-							className={`group flex items-center gap-1 px-3 py-2 cursor-pointer border-b border-gray-800/50 transition-colors ${
-								currentSession === s.key
-									? "bg-gray-800 text-white"
-									: "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
-							}`}
-						>
-							<button
-								type="button"
-								onClick={() => loadSession(s.key)}
-								className="flex-1 min-w-0 text-left"
-							>
-								<div className="text-sm truncate">{s.title || s.key.split(":").pop()}</div>
-								<div className="text-xs text-gray-500 flex gap-2">
-									<span>{s.messageCount} msgs</span>
-									<span>{formatTime(s.updatedAt)}</span>
-								</div>
-							</button>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									deleteSession(s.key);
-								}}
-								className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 text-xs px-1 transition-opacity"
-							>
-								x
-							</button>
-						</div>
-					))}
-				</div>
+				{sidebarContent}
 			</div>
 
 			{/* Chat area */}
 			<div
-				className={`flex-1 flex flex-col relative ${isDragOver ? "ring-2 ring-blue-500 ring-inset" : ""}`}
+				className={`flex-1 flex flex-col relative ${isDragOver ? "ring-2 ring-primary ring-inset" : ""}`}
 				onDrop={handleDrop}
 				onDragOver={handleDragOver}
 				onDragLeave={handleDragLeave}
 			>
 				{isDragOver && (
-					<div className="absolute inset-0 bg-blue-500/10 z-50 flex items-center justify-center pointer-events-none">
-						<div className="text-blue-400 text-lg font-medium">Drop files here</div>
+					<div className="absolute inset-0 bg-primary/10 z-50 flex items-center justify-center pointer-events-none">
+						<div className="text-primary text-lg font-medium">Drop files here</div>
 					</div>
 				)}
 
-				<header className="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
-					<h2 className="text-lg font-semibold">{currentAgentName}</h2>
-					<span className="text-xs text-gray-500">{currentSession ?? "New conversation"}</span>
+				<header className="border-b border-border px-4 md:px-6 py-3 flex items-center justify-between gap-2">
+					<div className="flex items-center gap-2">
+						<button
+							type="button"
+							onClick={() => setShowSidebar(true)}
+							className="md:hidden p-1 text-muted-foreground hover:text-foreground"
+						>
+							<Menu className="h-5 w-5" />
+						</button>
+						<h2 className="text-lg font-semibold">{currentAgentName}</h2>
+					</div>
+					<span className="text-xs text-muted-foreground truncate">
+						{currentSession ?? "New conversation"}
+					</span>
 				</header>
 
 				<ChatContainerRoot className="flex-1">
 					<ChatContainerContent className="p-6 space-y-4">
 						{messages.length === 0 && (
-							<div className="text-gray-500 text-center mt-20">
+							<div className="text-muted-foreground text-center mt-20">
 								Start a conversation with {currentAgentName}
 							</div>
 						)}
@@ -414,14 +628,39 @@ export function Chat() {
 						{messages.map((msg, i) =>
 							msg.role === "user" ? (
 								<Message key={i} className="justify-end">
-									<MessageContent className="bg-blue-600 text-white max-w-2xl">
-										{msg.content}
-									</MessageContent>
+									<div className="max-w-2xl space-y-2">
+										<MessageContent
+											className={`bg-primary text-primary-foreground ${msg.isPending ? "opacity-60" : ""}`}
+										>
+											{msg.content}
+											{msg.isPending && (
+												<span className="block text-xs opacity-70 mt-1 italic">
+													Queued — waiting for current response...
+												</span>
+											)}
+										</MessageContent>
+										{msg.attachments && msg.attachments.length > 0 && (
+											<div className="flex flex-wrap gap-2 justify-end">
+												{msg.attachments.map((att) => (
+													<FileAttachment key={att.url} {...att} />
+												))}
+											</div>
+										)}
+									</div>
 								</Message>
 							) : (
 								<Message key={i}>
 									<MessageAvatar alt={currentAgentName} fallback="AI" />
 									<div className="flex-1 min-w-0 max-w-2xl space-y-2">
+										{/* Thinking panel */}
+										{msg.thinking && (
+											<ThinkingPanel
+												content={msg.thinking}
+												isStreaming={msg.isStreaming && !msg.content}
+												durationMs={msg.thinkingDurationMs}
+											/>
+										)}
+
 										{/* Tool calls */}
 										{msg.toolCalls && msg.toolCalls.length > 0 && (
 											<div className="space-y-1">
@@ -441,19 +680,37 @@ export function Chat() {
 										{msg.content ? (
 											<MessageContent
 												markdown
-												className="bg-gray-800 text-gray-100 prose prose-invert prose-sm max-w-none prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-code:text-blue-300"
+												className="bg-muted text-foreground prose dark:prose-invert prose-sm max-w-none prose-pre:bg-card prose-pre:border prose-pre:border-border prose-code:text-primary"
 											>
 												{msg.content}
 											</MessageContent>
-										) : msg.isStreaming && (!msg.toolCalls || msg.toolCalls.length === 0) ? (
-											<div className="bg-gray-800 rounded-2xl px-4 py-3">
+										) : msg.isStreaming &&
+											(!msg.toolCalls || msg.toolCalls.length === 0) &&
+											!msg.thinking ? (
+											<div className="bg-muted rounded-2xl px-4 py-3">
 												<TypingLoader />
 											</div>
 										) : null}
 
+										{/* Attachments from assistant */}
+										{msg.attachments && msg.attachments.length > 0 && (
+											<div className="flex flex-wrap gap-2">
+												{msg.attachments.map((att) => (
+													<FileAttachment key={att.url} {...att} />
+												))}
+											</div>
+										)}
+
+										{/* Aborted indicator */}
+										{msg.isAborted && (
+											<div className="text-xs text-muted-foreground italic">
+												Response interrupted
+											</div>
+										)}
+
 										{/* Streaming cursor */}
 										{msg.isStreaming && msg.content && (
-											<span className="inline-block w-2 h-4 bg-gray-400 animate-pulse rounded-sm" />
+											<span className="inline-block w-2 h-4 bg-muted-foreground animate-pulse rounded-sm" />
 										)}
 									</div>
 								</Message>
@@ -464,23 +721,23 @@ export function Chat() {
 				</ChatContainerRoot>
 
 				{/* Input */}
-				<div className="border-t border-gray-800 p-4">
+				<div className="border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
 					{/* Attachment preview */}
 					{attachments.length > 0 && (
 						<div className="flex flex-wrap gap-2 mb-2">
 							{attachments.map((file, i) => (
 								<div
 									key={`${file.name}-${i}`}
-									className="flex items-center gap-1.5 bg-gray-800 rounded-lg px-3 py-1.5 text-sm text-gray-300"
+									className="flex items-center gap-1.5 bg-muted rounded-lg px-3 py-1.5 text-sm text-foreground/80"
 								>
 									<span className="truncate max-w-[150px]">{file.name}</span>
-									<span className="text-gray-500 text-xs">
+									<span className="text-muted-foreground text-xs">
 										{file.size < 1024 ? `${file.size}B` : `${Math.round(file.size / 1024)}KB`}
 									</span>
 									<button
 										type="button"
 										onClick={() => removeAttachment(i)}
-										className="text-gray-500 hover:text-red-400 ml-1"
+										className="text-muted-foreground hover:text-red-400 ml-1"
 									>
 										<X className="h-3 w-3" />
 									</button>
@@ -503,47 +760,53 @@ export function Chat() {
 					<PromptInput
 						value={input}
 						onValueChange={setInput}
-						isLoading={isStreaming || uploading}
+						isLoading={uploading}
 						onSubmit={handleSubmit}
-						disabled={isStreaming || uploading}
-						className="border-gray-700 bg-gray-900"
+						disabled={uploading}
+						className="border-border bg-card"
 					>
 						<PromptInputTextarea
-							placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-							className="text-white placeholder-gray-500"
+							placeholder={
+								isStreaming
+									? "Send a follow-up while the agent is responding..."
+									: "Type a message... (Enter to send, Shift+Enter for new line)"
+							}
+							className="text-foreground placeholder-muted-foreground"
 						/>
 						<PromptInputActions className="justify-between pt-1 px-1">
-							<Button
-								variant="ghost"
-								size="icon"
-								className="h-8 w-8 rounded-full text-gray-400 hover:text-white"
-								onClick={() => fileInputRef.current?.click()}
-								disabled={isStreaming || uploading}
-							>
-								<Paperclip className="h-4 w-4" />
-							</Button>
-							{isStreaming ? (
+							<div className="flex items-center gap-1">
 								<Button
 									variant="ghost"
 									size="icon"
-									className="h-8 w-8 rounded-full"
-									onClick={() => {
-										/* TODO: cancel */
-									}}
+									className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+									onClick={() => fileInputRef.current?.click()}
+									disabled={isStreaming || uploading}
 								>
-									<Square className="h-4 w-4 text-gray-400" />
+									<Paperclip className="h-4 w-4" />
 								</Button>
-							) : (
-								<Button
-									variant="default"
-									size="icon"
-									className="h-8 w-8 rounded-full bg-blue-600 hover:bg-blue-700"
-									onClick={handleSubmit}
-									disabled={!input.trim() && attachments.length === 0}
-								>
-									<ArrowUp className="h-4 w-4" />
-								</Button>
-							)}
+								{isStreaming && (
+									<Button
+										variant="ghost"
+										size="icon"
+										className="h-8 w-8 rounded-full text-muted-foreground hover:text-red-400"
+										onClick={() => {
+											if (currentSession) cancelChat(currentSession);
+										}}
+										title="Stop generating"
+									>
+										<Square className="h-4 w-4" />
+									</Button>
+								)}
+							</div>
+							<Button
+								variant="default"
+								size="icon"
+								className="h-8 w-8 rounded-full bg-primary hover:bg-primary/90"
+								onClick={handleSubmit}
+								disabled={!input.trim() && attachments.length === 0}
+							>
+								<ArrowUp className="h-4 w-4" />
+							</Button>
 						</PromptInputActions>
 					</PromptInput>
 				</div>

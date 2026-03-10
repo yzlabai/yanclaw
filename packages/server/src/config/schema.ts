@@ -38,6 +38,12 @@ const agentSchema = z.object({
 			deny: z.array(z.string()).optional(),
 		})
 		.optional(),
+	capabilities: z
+		.union([
+			z.array(z.string()), // ["fs:read", "net:http"]
+			z.string(), // "researcher" (preset name)
+		])
+		.optional(),
 });
 
 const channelAccountSchema = z.object({
@@ -202,11 +208,81 @@ export const configSchema = z.object({
 			dirs: z.array(z.string()).default([]),
 		})
 		.default({}),
+
+	security: z
+		.object({
+			vault: z.object({ enabled: z.boolean().default(true) }).default({}),
+			rateLimit: z
+				.object({
+					chat: z
+						.object({ windowMs: z.number().default(60_000), max: z.number().default(10) })
+						.default({}),
+					api: z
+						.object({ windowMs: z.number().default(60_000), max: z.number().default(60) })
+						.default({}),
+					approval: z
+						.object({ windowMs: z.number().default(60_000), max: z.number().default(30) })
+						.default({}),
+				})
+				.default({}),
+			tokenRotation: z
+				.object({
+					intervalHours: z.number().default(0),
+					gracePeriodMinutes: z.number().default(5),
+				})
+				.default({}),
+			audit: z
+				.object({
+					enabled: z.boolean().default(true),
+					retentionDays: z.number().default(90),
+				})
+				.default({}),
+			anomaly: z
+				.object({
+					enabled: z.boolean().default(true),
+					thresholds: z
+						.record(
+							z.object({
+								warn: z.number(),
+								critical: z.number(),
+							}),
+						)
+						.default({
+							shell: { warn: 10, critical: 20 },
+							file_write: { warn: 30, critical: 50 },
+							"*": { warn: 80, critical: 100 },
+						}),
+					action: z.enum(["log", "pause", "abort"]).default("pause"),
+				})
+				.default({}),
+			promptInjection: z
+				.object({
+					wrapToolResults: z.boolean().default(true),
+					detectPatterns: z.boolean().default(true),
+					blockOnDetection: z.boolean().default(false),
+				})
+				.default({}),
+			network: z
+				.object({
+					allowedHosts: z.array(z.string()).default([]),
+					blockPrivate: z.boolean().default(true),
+					exemptPorts: z.array(z.number()).default([]),
+				})
+				.default({}),
+			dataFlow: z
+				.object({
+					enabled: z.boolean().default(true),
+					block: z.boolean().default(false),
+				})
+				.default({}),
+		})
+		.default({}),
 });
 
 export type Config = z.infer<typeof configSchema>;
 export type AgentConfig = z.infer<typeof agentSchema>;
 export type Binding = z.infer<typeof bindingSchema>;
 export type ToolsConfig = z.infer<typeof toolsSchema>;
+export type SecurityConfig = z.infer<typeof configSchema>["security"];
 
 export { agentSchema, bindingSchema };

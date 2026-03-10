@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import JSON5 from "json5";
+import { CredentialVault, expandVaultRefs } from "../security/vault";
 import { type Config, configSchema } from "./schema";
 
 export function resolveDataDir(): string {
@@ -88,6 +89,7 @@ export class ConfigStore {
 	private configPath: string;
 	private watcher: FSWatcher | null = null;
 	private listeners = new Set<(config: Config) => void>();
+	private vault: CredentialVault | null = null;
 
 	private constructor(config: Config, configPath: string) {
 		this.config = config;
@@ -111,7 +113,20 @@ export class ConfigStore {
 			raw = JSON5.parse(DEFAULT_CONFIG);
 		}
 
-		const expanded = expandEnvVars(raw);
+		// Expand env vars first, then vault refs
+		let expanded = expandEnvVars(raw);
+
+		// Initialize vault for $vault:xxx credential resolution
+		let vault: CredentialVault | null = null;
+		try {
+			vault = await CredentialVault.create(dir);
+			if (vault.keys().length > 0) {
+				expanded = expandVaultRefs(expanded, vault);
+			}
+		} catch (err) {
+			console.warn("[config] Vault initialization failed, credentials will not be decrypted:", err);
+		}
+
 		const config = configSchema.parse(expanded);
 
 		// Generate auth token if not set
@@ -125,8 +140,14 @@ export class ConfigStore {
 		await writeFile(tokenPath, config.gateway.auth.token, "utf-8");
 
 		const store = new ConfigStore(config, path);
+		store.vault = vault;
 		store.startWatcher();
 		return store;
+	}
+
+	/** Get the credential vault instance. */
+	getVault(): CredentialVault | null {
+		return this.vault;
 	}
 
 	get(): Config {
@@ -157,7 +178,10 @@ export class ConfigStore {
 				try {
 					const content = await readFile(this.configPath, "utf-8");
 					const raw = JSON5.parse(content);
-					const expanded = expandEnvVars(raw);
+					let expanded = expandEnvVars(raw);
+					if (this.vault && this.vault.keys().length > 0) {
+						expanded = expandVaultRefs(expanded, this.vault);
+					}
 					const newConfig = configSchema.parse(expanded);
 
 					// Preserve runtime-only token

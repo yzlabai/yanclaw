@@ -9,9 +9,14 @@ import type { ConfigStore } from "./config";
 import { CronService } from "./cron";
 import { MemoryStore } from "./db/memories";
 import { SessionStore } from "./db/sessions";
+import { getRawDatabase } from "./db/sqlite";
 import { MediaStore } from "./media";
 import { MemoryAutoIndexer } from "./memory";
 import { PluginLoader, PluginRegistry } from "./plugins";
+import { AnomalyDetector } from "./security/anomaly";
+import { AuditLogger } from "./security/audit";
+import { LeakDetector } from "./security/leak-detector";
+import { TokenRotation } from "./security/token-rotation";
 
 /** Shared gateway state, initialized once at startup. */
 export interface GatewayContext {
@@ -25,6 +30,10 @@ export interface GatewayContext {
 	cronService: CronService;
 	pluginRegistry: PluginRegistry;
 	approvalManager: ApprovalManager;
+	leakDetector: LeakDetector;
+	auditLogger: AuditLogger | null;
+	anomalyDetector: AnomalyDetector;
+	tokenRotation: TokenRotation | null;
 }
 
 let ctx: GatewayContext | null = null;
@@ -32,10 +41,44 @@ let ctx: GatewayContext | null = null;
 export function initGateway(config: ConfigStore): GatewayContext {
 	const modelManager = new ModelManager();
 	const approvalManager = new ApprovalManager();
-	const agentRuntime = new AgentRuntime(modelManager, approvalManager);
+	const mediaStore = new MediaStore();
+	const leakDetector = new LeakDetector();
+	const anomalyDetector = new AnomalyDetector();
+
+	// Initialize audit logger with raw SQLite database
+	let auditLogger: AuditLogger | null = null;
+	try {
+		const rawDb = getRawDatabase();
+		auditLogger = new AuditLogger(rawDb);
+	} catch {
+		console.warn("[gateway] Audit logger not available (database not initialized)");
+	}
+
+	const agentRuntime = new AgentRuntime(modelManager, approvalManager, mediaStore, leakDetector);
 	const channelManager = new ChannelManager();
 	const cronService = new CronService();
 	const pluginRegistry = new PluginRegistry();
+
+	// Initialize token rotation if configured
+	const securityCfg = config.get().security;
+	let tokenRotation: TokenRotation | null = null;
+	if (securityCfg.tokenRotation.intervalHours > 0) {
+		tokenRotation = new TokenRotation({
+			initialToken: config.get().gateway.auth.token ?? "",
+			intervalHours: securityCfg.tokenRotation.intervalHours,
+			gracePeriodMinutes: securityCfg.tokenRotation.gracePeriodMinutes,
+			onRotate: (newToken) => {
+				// Update the config's in-memory token so other components see it
+				config.get().gateway.auth.token = newToken;
+			},
+		});
+	}
+
+	// Register API keys for leak detection
+	leakDetector.registerFromConfig(config.get());
+	config.onChange((cfg) => {
+		leakDetector.registerFromConfig(cfg);
+	});
 
 	// Wire up channel manager → agent runtime
 	channelManager.getConfig = () => config.get();
@@ -49,13 +92,17 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		config,
 		sessions: new SessionStore(),
 		memories: new MemoryStore(),
-		media: new MediaStore(),
+		media: mediaStore,
 		agentRuntime,
 		modelManager,
 		channelManager,
 		cronService,
 		pluginRegistry,
 		approvalManager,
+		leakDetector,
+		auditLogger,
+		anomalyDetector,
+		tokenRotation,
 	};
 
 	return ctx;
@@ -149,6 +196,14 @@ export function runSessionCleanup(gw: GatewayContext): void {
 	gw.media.cleanup().catch((err) => {
 		console.error("[gateway] Media cleanup error:", err);
 	});
+
+	// Prune old audit logs (same retention as sessions)
+	if (gw.auditLogger) {
+		const pruned = gw.auditLogger.prune(days);
+		if (pruned > 0) {
+			console.log(`[gateway] Pruned ${pruned} audit log entries`);
+		}
+	}
 }
 
 /** Start memory auto-indexer if configured. */

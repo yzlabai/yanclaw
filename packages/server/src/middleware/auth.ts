@@ -31,10 +31,18 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 	}
 
 	const token = match[1];
-	const expectedToken = getGateway().config.get().gateway.auth.token;
+	const gw = getGateway();
 
-	if (!expectedToken || token !== expectedToken) {
-		return c.json({ error: "Invalid auth token" }, 401);
+	// Use token rotation validator if active, otherwise simple comparison
+	if (gw.tokenRotation) {
+		if (!gw.tokenRotation.validate(token)) {
+			return c.json({ error: "Invalid auth token" }, 401);
+		}
+	} else {
+		const expectedToken = gw.config.get().gateway.auth.token;
+		if (!expectedToken || token !== expectedToken) {
+			return c.json({ error: "Invalid auth token" }, 401);
+		}
 	}
 
 	return next();

@@ -1,8 +1,9 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { type NetworkConfig, validateNetworkAccess } from "../../security/network";
 import { truncateOutput } from "./common";
 
-export function createWebFetchTool(opts: { maxOutput: number }) {
+export function createWebFetchTool(opts: { maxOutput: number; network?: NetworkConfig }) {
 	return tool({
 		description:
 			"Fetch the content of a URL and return it as text. Useful for reading web pages, APIs, or downloading text content.",
@@ -15,6 +16,14 @@ export function createWebFetchTool(opts: { maxOutput: number }) {
 		}),
 		execute: async ({ url, headers }) => {
 			try {
+				// Network access validation (SSRF prevention + host whitelist)
+				if (opts.network) {
+					const check = validateNetworkAccess(url, opts.network);
+					if (!check.allowed) {
+						return `Network access denied: ${check.reason}`;
+					}
+				}
+
 				const res = await fetch(url, {
 					headers: {
 						"User-Agent": "YanClaw/0.1",
