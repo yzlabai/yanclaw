@@ -27,9 +27,24 @@
 	"css": {
 		"parser": { "cssModules": true },
 		"linter": { "enabled": false },
-		"formatter": { "enabled": false }
+		"formatter": { "enabled": false },
+		"assist": { "enabled": false }
 	},
+	"overrides": [
+		{
+			"includes": ["**/*.css"],
+			"css": { "parser": { "allowWrongLineComments": true } }
+		}
+	],
 	"files": {
-		"includes": ["**", "!**/node_modules", "!**/dist", "!**/src-tauri/target"]
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/dist",
+			"!**/src-tauri/target",
+			"!**/src-tauri/gen",
+			"!tmp",
+			"!.claude"
+		]
 	}
 }

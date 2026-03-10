@@ -1,68 +1,66 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "YanClaw",
-  "version": "0.1.1",
-  "identifier": "com.yanclaw.app",
-  "build": {
-    "frontendDist": "../packages/web/dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "bun run --filter @yanclaw/web dev",
-    "beforeBuildCommand": "bun run --filter @yanclaw/web build"
-  },
-  "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "YanClaw",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 800,
-        "minHeight": 600,
-        "resizable": true,
-        "fullscreen": false,
-        "center": true,
-        "visible": true
-      }
-    ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "tooltip": "YanClaw"
-    },
-    "security": {
-      "csp": null
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "windows": {
-      "wix": {
-        "language": "en-US"
-      },
-      "nsis": {
-        "languages": ["English", "SimpChinese"],
-        "displayLanguageSelector": true
-      }
-    }
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzODRBNTU3Q0QzNzI2RTkKUldUcEpqZk5WNldFbzF4REFRQWFRZzQwQWx0RWFvMkt4KzU5cG92SlFaaDl4TU91cEFJUS9JdTIK",
-      "endpoints": [
-        "https://github.com/yzlabai/yanclaw/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
-    },
-    "global-shortcut": {}
-  }
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "YanClaw",
+	"version": "0.1.1",
+	"identifier": "com.yanclaw.app",
+	"build": {
+		"frontendDist": "../packages/web/dist",
+		"devUrl": "http://localhost:5173",
+		"beforeDevCommand": "bun run --filter @yanclaw/web dev",
+		"beforeBuildCommand": "bun run --filter @yanclaw/web build"
+	},
+	"app": {
+		"windows": [
+			{
+				"label": "main",
+				"title": "YanClaw",
+				"width": 1200,
+				"height": 800,
+				"minWidth": 800,
+				"minHeight": 600,
+				"resizable": true,
+				"fullscreen": false,
+				"center": true,
+				"visible": true
+			}
+		],
+		"trayIcon": {
+			"iconPath": "icons/icon.png",
+			"iconAsTemplate": true,
+			"tooltip": "YanClaw"
+		},
+		"security": {
+			"csp": null
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		],
+		"windows": {
+			"wix": {
+				"language": "en-US"
+			},
+			"nsis": {
+				"languages": ["English", "SimpChinese"],
+				"displayLanguageSelector": true
+			}
+		}
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzODRBNTU3Q0QzNzI2RTkKUldUcEpqZk5WNldFbzF4REFRQWFRZzQwQWx0RWFvMkt4KzU5cG92SlFaaDl4TU91cEFJUS9JdTIK",
+			"endpoints": ["https://github.com/yzlabai/yanclaw/releases/latest/download/latest.json"],
+			"windows": {
+				"installMode": "passive"
+			}
+		},
+		"global-shortcut": {}
+	}
 }
