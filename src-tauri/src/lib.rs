@@ -68,15 +68,14 @@ async fn start_gateway(state: State<'_, GatewayState>) -> Result<(), String> {
         return Err("Gateway already running".into());
     }
 
-    let server_entry = find_server_entry().ok_or("Could not find server entry point")?;
+    let (cmd, args) = find_server_entry().ok_or("Could not find server entry point")?;
 
-    let child = tokio::process::Command::new("bun")
-        .arg("run")
-        .arg(&server_entry)
+    let child = tokio::process::Command::new(&cmd)
+        .args(&args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| format!("Failed to start gateway: {}", e))?;
+        .map_err(|e| format!("Failed to start gateway ({}): {}", cmd, e))?;
 
     *proc = Some(child);
     log::info!("Gateway started");
@@ -155,20 +154,41 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn find_server_entry() -> Option<String> {
-    // In development, run from workspace
+/// Returns (command, args) to start the gateway server.
+/// In dev: ("bun", ["run", "packages/server/src/index.ts"])
+/// In prod: ("path/to/yanclaw-server", [])  — compiled standalone binary
+fn find_server_entry() -> Option<(String, Vec<String>)> {
+    // In development, run from workspace with bun
     let dev_path = std::env::current_dir()
         .ok()?
         .join("packages/server/src/index.ts");
     if dev_path.exists() {
-        return Some(dev_path.to_string_lossy().to_string());
+        return Some((
+            "bun".to_string(),
+            vec!["run".to_string(), dev_path.to_string_lossy().to_string()],
+        ));
     }
 
-    // In production, check relative to executable
+    // In production, look for compiled standalone binary in bundled resources
     let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    let prod_path = exe_dir.join("server/index.js");
-    if prod_path.exists() {
-        return Some(prod_path.to_string_lossy().to_string());
+
+    #[cfg(target_os = "windows")]
+    let binary_name = "yanclaw-server.exe";
+    #[cfg(not(target_os = "windows"))]
+    let binary_name = "yanclaw-server";
+
+    // Platform-specific resource paths
+    let candidates = [
+        exe_dir.join(format!("server/{}", binary_name)),                      // Windows
+        exe_dir.join(format!("../Resources/server/{}", binary_name)),         // macOS
+        exe_dir.join(format!("../lib/yanclaw/server/{}", binary_name)),       // Linux
+    ];
+
+    for path in &candidates {
+        if path.exists() {
+            let resolved = path.canonicalize().ok()?;
+            return Some((resolved.to_string_lossy().to_string(), vec![]));
+        }
     }
 
     None
@@ -226,7 +246,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // Periodic health check — update tray tooltip and status menu item
     let tray_id = tray.id().clone();
     let handle = app.clone();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         loop {
             let port = get_gateway_port().await.unwrap_or(18789);
             let is_healthy = tokio::time::timeout(

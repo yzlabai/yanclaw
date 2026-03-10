@@ -7,7 +7,7 @@
 		"frontendDist": "../packages/web/dist",
 		"devUrl": "http://localhost:5173",
 		"beforeDevCommand": "bun run --filter @yanclaw/web dev",
-		"beforeBuildCommand": "bun run --filter @yanclaw/web build"
+		"beforeBuildCommand": "bun run --filter @yanclaw/web build && bun run --filter @yanclaw/server build:compile"
 	},
 	"app": {
 		"windows": [
@@ -43,6 +43,7 @@
 			"icons/icon.icns",
 			"icons/icon.ico"
 		],
+		"resources": ["server/*"],
 		"windows": {
 			"wix": {
 				"language": "en-US"
@@ -61,6 +62,6 @@
 				"installMode": "passive"
 			}
 		},
-		"global-shortcut": {}
+		"global-shortcut": null
 	}
 }
