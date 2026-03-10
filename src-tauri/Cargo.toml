@@ -1,6 +1,6 @@
 [package]
 name = "yanclaw"
-version = "0.1.1"
+version = "0.1.2"
 description = "YanClaw — Local-first multi-channel AI assistant"
 authors = ["YanClaw"]
 license = "MIT"
