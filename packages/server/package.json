@@ -8,7 +8,7 @@
 	},
 	"scripts": {
 		"dev": "bun --watch src/index.ts",
-		"build": "bun build src/index.ts --outdir dist --target bun"
+		"build": "bun build src/index.ts --outdir dist --target bun --external playwright --external playwright-core --external electron --external chromium-bidi"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.2.0",
