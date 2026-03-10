@@ -1,13 +1,14 @@
 # YanClaw 数据库设计
 
-> 参考 OpenClaw 会话存储设计，使用 bun:sqlite 实现
+> 参考 OpenClaw 会话存储设计，使用 Drizzle ORM + bun:sqlite 实现
 
 ## 概述
 
 - **数据库**: SQLite（通过 `bun:sqlite` 原生绑定）
+- **ORM**: Drizzle ORM（`drizzle-orm/bun-sqlite`），类型安全查询
 - **路径**: `~/.yanclaw/data.db`
 - **模式**: WAL（Write-Ahead Logging），支持并发读写
-- **向量检索**: sqlite-vec 扩展
+- **向量检索**: sqlite-vec 扩展（规划中）
 
 ---
 
@@ -15,12 +16,35 @@
 
 ```typescript
 import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import * as schema from "./schema";
 
-const db = new Database(path.join(dataDir, "data.db"));
-db.exec("PRAGMA journal_mode=WAL");
-db.exec("PRAGMA foreign_keys=ON");
-db.exec("PRAGMA busy_timeout=5000");
+const rawDb = new Database(path.join(dataDir, "data.db"));
+rawDb.exec("PRAGMA journal_mode=WAL");
+rawDb.exec("PRAGMA foreign_keys=ON");
+rawDb.exec("PRAGMA busy_timeout=5000");
+
+const db = drizzle(rawDb, { schema });
 ```
+
+## Drizzle Schema
+
+Schema 定义在 `packages/server/src/db/schema.ts`，使用 Drizzle 的 SQLite builder：
+
+```typescript
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const sessions = sqliteTable("sessions", {
+  key: text("key").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  channel: text("channel"),
+  // ...
+}, (table) => [
+  index("idx_sessions_agent").on(table.agentId),
+]);
+```
+
+初始表通过 raw SQL migration 创建（兼容已有数据库），Drizzle 仅用于类型安全查询层。
 
 ---
 
@@ -291,40 +315,49 @@ async function runMigrations(db: Database) {
 
 ---
 
-## 常用查询模式
+## 常用查询模式（Drizzle ORM）
 
 ### 加载会话消息
 
 ```typescript
-const messages = db.query(`
-  SELECT id, role, content, tool_calls, attachments, model, token_count, created_at
-  FROM messages
-  WHERE session_key = ?
-  ORDER BY created_at ASC
-`).all(sessionKey);
+import { eq, asc } from "drizzle-orm";
+
+const msgs = db.select()
+  .from(messages)
+  .where(eq(messages.sessionKey, sessionKey))
+  .orderBy(asc(messages.createdAt))
+  .all();
 ```
 
 ### 保存 Agent 回复（事务）
 
 ```typescript
-const saveReply = db.transaction((sessionKey, msgs) => {
+const rawDb = getRawDatabase();
+const tx = rawDb.transaction(() => {
+  const db = getDb();
   for (const msg of msgs) {
-    db.run(`
-      INSERT INTO messages (id, session_key, role, content, tool_calls, model, token_count, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [msg.id, sessionKey, msg.role, msg.content, JSON.stringify(msg.toolCalls), msg.model, msg.tokenCount, Date.now()]);
+    db.insert(messages).values({
+      id: nanoid(),
+      sessionKey,
+      role: msg.role,
+      content: msg.content,
+      toolCalls: msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
+      model: msg.model ?? null,
+      tokenCount: msg.tokenCount ?? 0,
+      createdAt: Date.now(),
+    }).run();
   }
 
-  db.run(`
-    UPDATE sessions
-    SET message_count = message_count + ?,
-        token_count = token_count + ?,
-        updated_at = ?
-    WHERE key = ?
-  `, [msgs.length, totalTokens, Date.now(), sessionKey]);
+  db.update(sessions)
+    .set({
+      messageCount: sql`${sessions.messageCount} + ${msgs.length}`,
+      tokenCount: sql`${sessions.tokenCount} + ${totalTokens}`,
+      updatedAt: Date.now(),
+    })
+    .where(eq(sessions.key, sessionKey))
+    .run();
 });
-
-saveReply(sessionKey, newMessages);
+tx();
 ```
 
 ### 会话压缩

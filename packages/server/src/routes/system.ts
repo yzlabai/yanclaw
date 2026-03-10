@@ -27,4 +27,16 @@ export const systemRoute = new Hono()
 			sessions: { total },
 			cron: { total: config.cron.tasks.length },
 		});
+	})
+	.get("/setup", (c) => {
+		const config = getGateway().config.get();
+
+		// Setup is complete if at least one model provider is configured
+		const hasProvider =
+			(config.models.anthropic?.profiles?.some((p) => !!p.apiKey) ?? false) ||
+			(config.models.openai?.profiles?.some((p) => !!p.apiKey) ?? false) ||
+			(config.models.google?.profiles?.some((p) => !!p.apiKey) ?? false) ||
+			!!config.models.ollama?.baseUrl;
+
+		return c.json({ needsSetup: !hasProvider });
 	});

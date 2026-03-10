@@ -120,6 +120,10 @@ export class ConfigStore {
 			config.gateway.auth.token = randomBytes(32).toString("hex");
 		}
 
+		// Write token to file for Tauri IPC and external tools to read
+		const tokenPath = join(dir, "auth.token");
+		await writeFile(tokenPath, config.gateway.auth.token, "utf-8");
+
 		const store = new ConfigStore(config, path);
 		store.startWatcher();
 		return store;

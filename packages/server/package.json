@@ -14,13 +14,20 @@
 		"@ai-sdk/anthropic": "^1.2.0",
 		"@ai-sdk/openai": "^1.2.0",
 		"@hono/zod-validator": "^0.4.0",
+		"@slack/bolt": "^4.6.0",
 		"ai": "^4.3.0",
+		"cron-parser": "^5.5.0",
+		"discord.js": "^14.25.1",
+		"drizzle-orm": "^0.45.1",
+		"grammy": "^1.41.1",
 		"hono": "^4.7.0",
 		"json5": "^2.2.3",
 		"nanoid": "^5.1.6",
+		"playwright": "^1.58.2",
 		"zod": "^3.24.0"
 	},
 	"devDependencies": {
-		"@types/bun": "^1.2.0"
+		"@types/bun": "^1.2.0",
+		"drizzle-kit": "^0.31.9"
 	}
 }

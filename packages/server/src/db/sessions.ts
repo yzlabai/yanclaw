@@ -1,31 +1,10 @@
+import { and, asc, count, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { getDatabase } from "./sqlite";
+import { messages, sessions } from "./schema";
+import { getDb, getRawDatabase } from "./sqlite";
 
-export interface SessionRow {
-	key: string;
-	agent_id: string;
-	channel: string | null;
-	peer_kind: string | null;
-	peer_id: string | null;
-	peer_name: string | null;
-	title: string | null;
-	message_count: number;
-	token_count: number;
-	created_at: number;
-	updated_at: number;
-}
-
-export interface MessageRow {
-	id: string;
-	session_key: string;
-	role: string;
-	content: string | null;
-	tool_calls: string | null;
-	attachments: string | null;
-	model: string | null;
-	token_count: number;
-	created_at: number;
-}
+export type SessionRow = typeof sessions.$inferSelect;
+export type MessageRow = typeof messages.$inferSelect;
 
 export class SessionStore {
 	ensureSession(params: {
@@ -36,81 +15,82 @@ export class SessionStore {
 		peerId?: string;
 		peerName?: string;
 	}): void {
-		const db = getDatabase();
+		const db = getDb();
 		const existing = db
-			.query<{ key: string }, [string]>("SELECT key FROM sessions WHERE key = ?")
-			.get(params.key);
+			.select({ key: sessions.key })
+			.from(sessions)
+			.where(eq(sessions.key, params.key))
+			.get();
 
 		if (!existing) {
 			const now = Date.now();
-			db.run(
-				`INSERT INTO sessions (key, agent_id, channel, peer_kind, peer_id, peer_name, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				[
-					params.key,
-					params.agentId,
-					params.channel ?? null,
-					params.peerKind ?? null,
-					params.peerId ?? null,
-					params.peerName ?? null,
-					now,
-					now,
-				],
-			);
+			db.insert(sessions)
+				.values({
+					key: params.key,
+					agentId: params.agentId,
+					channel: params.channel ?? null,
+					peerKind: params.peerKind ?? null,
+					peerId: params.peerId ?? null,
+					peerName: params.peerName ?? null,
+					messageCount: 0,
+					tokenCount: 0,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
 		}
 	}
 
-	getSession(key: string): SessionRow | null {
-		const db = getDatabase();
-		return db.query<SessionRow, [string]>("SELECT * FROM sessions WHERE key = ?").get(key);
+	getSession(key: string): SessionRow | undefined {
+		const db = getDb();
+		return db.select().from(sessions).where(eq(sessions.key, key)).get();
 	}
 
 	listSessions(params?: { agentId?: string; channel?: string; limit?: number; offset?: number }): {
 		sessions: SessionRow[];
 		total: number;
 	} {
-		const db = getDatabase();
-		const conditions: string[] = [];
-		const args: unknown[] = [];
+		const db = getDb();
+		const conditions = [];
 
 		if (params?.agentId) {
-			conditions.push("agent_id = ?");
-			args.push(params.agentId);
+			conditions.push(eq(sessions.agentId, params.agentId));
 		}
 		if (params?.channel) {
-			conditions.push("channel = ?");
-			args.push(params.channel);
+			conditions.push(eq(sessions.channel, params.channel));
 		}
 
-		const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+		const where = conditions.length > 0 ? and(...conditions) : undefined;
 		const limit = params?.limit ?? 20;
 		const offset = params?.offset ?? 0;
 
-		const total = db
-			.query<{ count: number }, unknown[]>(`SELECT COUNT(*) as count FROM sessions ${where}`)
-			.get(...args)?.count;
+		const [totalResult] = db.select({ count: count() }).from(sessions).where(where).all();
 
-		const sessions = db
-			.query<SessionRow, unknown[]>(
-				`SELECT * FROM sessions ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
-			)
-			.all(...args, limit, offset);
+		const rows = db
+			.select()
+			.from(sessions)
+			.where(where)
+			.orderBy(desc(sessions.updatedAt))
+			.limit(limit)
+			.offset(offset)
+			.all();
 
-		return { sessions, total };
+		return { sessions: rows, total: totalResult.count };
 	}
 
 	loadMessages(sessionKey: string): MessageRow[] {
-		const db = getDatabase();
+		const db = getDb();
 		return db
-			.query<MessageRow, [string]>(
-				"SELECT * FROM messages WHERE session_key = ? ORDER BY created_at ASC",
-			)
-			.all(sessionKey);
+			.select()
+			.from(messages)
+			.where(eq(messages.sessionKey, sessionKey))
+			.orderBy(asc(messages.createdAt))
+			.all();
 	}
 
 	saveMessages(
 		sessionKey: string,
-		messages: Array<{
+		msgs: Array<{
 			role: string;
 			content: string | null;
 			toolCalls?: unknown[];
@@ -118,82 +98,108 @@ export class SessionStore {
 			tokenCount?: number;
 		}>,
 	): void {
-		const db = getDatabase();
+		const rawDb = getRawDatabase();
 		const now = Date.now();
 
-		const tx = db.transaction(() => {
+		const tx = rawDb.transaction(() => {
+			const db = getDb();
 			let totalTokens = 0;
-			for (const msg of messages) {
+
+			for (const msg of msgs) {
 				const id = nanoid();
 				const tokenCount = msg.tokenCount ?? 0;
 				totalTokens += tokenCount;
 
-				db.run(
-					`INSERT INTO messages (id, session_key, role, content, tool_calls, model, token_count, created_at)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
+				db.insert(messages)
+					.values({
 						id,
 						sessionKey,
-						msg.role,
-						msg.content,
-						msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
-						msg.model ?? null,
+						role: msg.role,
+						content: msg.content,
+						toolCalls: msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
+						model: msg.model ?? null,
 						tokenCount,
-						now,
-					],
-				);
+						createdAt: now,
+					})
+					.run();
 			}
 
-			db.run(
-				`UPDATE sessions
-				 SET message_count = message_count + ?,
-				     token_count = token_count + ?,
-				     updated_at = ?
-				 WHERE key = ?`,
-				[messages.length, totalTokens, now, sessionKey],
-			);
+			db.update(sessions)
+				.set({
+					messageCount: sql`${sessions.messageCount} + ${msgs.length}`,
+					tokenCount: sql`${sessions.tokenCount} + ${totalTokens}`,
+					updatedAt: now,
+				})
+				.where(eq(sessions.key, sessionKey))
+				.run();
 		});
 
 		tx();
 	}
 
+	updateTitle(key: string, title: string): void {
+		const db = getDb();
+		db.update(sessions).set({ title, updatedAt: Date.now() }).where(eq(sessions.key, key)).run();
+	}
+
 	deleteSession(key: string): boolean {
-		const db = getDatabase();
-		const result = db.run("DELETE FROM sessions WHERE key = ?", [key]);
+		const db = getDb();
+		const result = db.delete(sessions).where(eq(sessions.key, key)).run();
 		return result.changes > 0;
 	}
 
 	compact(sessionKey: string, maxTokens: number): number {
-		const db = getDatabase();
 		const session = this.getSession(sessionKey);
-		if (!session || session.token_count <= maxTokens) return 0;
+		if (!session || session.tokenCount <= maxTokens) return 0;
 
-		const messages = db
-			.query<{ id: string; role: string; token_count: number }, [string]>(
-				"SELECT id, role, token_count FROM messages WHERE session_key = ? ORDER BY created_at ASC",
-			)
-			.all(sessionKey);
+		const db = getDb();
+		const rows = db
+			.select({
+				id: messages.id,
+				role: messages.role,
+				tokenCount: messages.tokenCount,
+			})
+			.from(messages)
+			.where(eq(messages.sessionKey, sessionKey))
+			.orderBy(asc(messages.createdAt))
+			.all();
 
-		const tokensToFree = session.token_count - maxTokens;
+		const tokensToFree = session.tokenCount - maxTokens;
 		let accumulated = 0;
 		const toDelete: string[] = [];
 
-		for (const msg of messages) {
+		for (const msg of rows) {
 			if (msg.role === "system") continue;
-			accumulated += msg.token_count;
+			accumulated += msg.tokenCount;
 			toDelete.push(msg.id);
 			if (accumulated >= tokensToFree) break;
 		}
 
 		if (toDelete.length > 0) {
-			const placeholders = toDelete.map(() => "?").join(",");
-			db.run(`DELETE FROM messages WHERE id IN (${placeholders})`, toDelete);
-			db.run(
-				`UPDATE sessions SET message_count = message_count - ?, token_count = token_count - ?, updated_at = ? WHERE key = ?`,
-				[toDelete.length, accumulated, Date.now(), sessionKey],
-			);
+			db.delete(messages).where(inArray(messages.id, toDelete)).run();
+			db.update(sessions)
+				.set({
+					messageCount: sql`${sessions.messageCount} - ${toDelete.length}`,
+					tokenCount: sql`${sessions.tokenCount} - ${accumulated}`,
+					updatedAt: Date.now(),
+				})
+				.where(eq(sessions.key, sessionKey))
+				.run();
 		}
 
 		return toDelete.length;
+	}
+
+	/** Delete sessions not updated in the last `days` days. Returns number of sessions deleted. */
+	pruneStale(days: number): number {
+		if (days <= 0) return 0;
+		const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+		const db = getDb();
+		// Messages cascade-delete via FK
+		const result = db.delete(sessions).where(lt(sessions.updatedAt, cutoff)).run();
+		if (result.changes > 0) {
+			console.log(`[sessions] Pruned ${result.changes} stale session(s) older than ${days} days`);
+		}
+		return result.changes;
 	}
 }

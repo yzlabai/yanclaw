@@ -104,6 +104,16 @@ const toolsSchema = z
 					.default(["ls", "cat", "grep", "find", "echo", "date", "pwd", "wc"]),
 				timeout: z.number().default(30_000),
 				maxOutput: z.number().default(10_240),
+				sandbox: z
+					.object({
+						enabled: z.boolean().default(false),
+						image: z.string().default("ubuntu:22.04"),
+						memoryLimit: z.string().default("256m"),
+						cpuLimit: z.string().default("0.5"),
+						network: z.string().default("none"),
+						readOnlyWorkspace: z.boolean().default(false),
+					})
+					.default({}),
 			})
 			.default({}),
 		byChannel: z
@@ -152,6 +162,7 @@ export const configSchema = z.object({
 					z.object({
 						id: z.string(),
 						agent: z.string().default("main"),
+						mode: z.enum(["cron", "interval", "once"]).default("cron"),
 						schedule: z.string(),
 						prompt: z.string(),
 						deliveryTargets: z
@@ -181,6 +192,14 @@ export const configSchema = z.object({
 			enabled: z.boolean().default(false),
 			embeddingModel: z.string().default("text-embedding-3-small"),
 			autoIndex: z.boolean().default(true),
+			indexDirs: z.array(z.string()).default([]),
+		})
+		.default({}),
+
+	plugins: z
+		.object({
+			enabled: z.record(z.boolean()).default({}),
+			dirs: z.array(z.string()).default([]),
 		})
 		.default({}),
 });

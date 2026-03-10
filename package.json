@@ -16,6 +16,10 @@
 		"format": "biome format --write ."
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.6"
+		"@biomejs/biome": "^2.4.6",
+		"vitest": "^4.0.18"
+	},
+	"dependencies": {
+		"@ai-sdk/google": "^3.0.43"
 	}
 }

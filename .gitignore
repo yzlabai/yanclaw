@@ -43,3 +43,5 @@ Desktop.ini
 *.tmp
 *.temp
 .cache/
+
+tmp/

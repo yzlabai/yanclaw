@@ -8,6 +8,7 @@ const chatSendSchema = z.object({
 	agentId: z.string().default("main"),
 	sessionKey: z.string().default("agent:main:main"),
 	message: z.string().min(1),
+	imageUrls: z.array(z.string()).optional(),
 });
 
 export const chatRoute = new Hono().post("/send", zValidator("json", chatSendSchema), (c) => {
@@ -21,6 +22,7 @@ export const chatRoute = new Hono().post("/send", zValidator("json", chatSendSch
 			sessionKey: body.sessionKey,
 			message: body.message,
 			config,
+			imageUrls: body.imageUrls,
 		});
 
 		for await (const event of events) {

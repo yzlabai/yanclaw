@@ -1293,3 +1293,149 @@ Hono auth 中间件校验
 - **媒体流式传输**：大文件不全量加载到内存（Bun.file() 零拷贝）
 - **工具结果截断**：超过 10KB 的工具输出自动截断，保留上下文窗口空间
 - **会话压缩**：超出 token 预算时自动裁剪早期消息
+
+---
+
+## 9. 技术选型更新
+
+### 9.1 已采用的技术
+
+| 模块 | 技术 | 说明 |
+|------|------|------|
+| 数据库 ORM | Drizzle ORM | 类型安全查询层，基于 bun:sqlite |
+| 前端 UI 组件 | prompt-kit | 专为 AI 聊天场景设计的组件库 |
+| 前端状态 | React hooks + fetch | 轻量状态管理，无需额外状态库 |
+| Markdown 渲染 | react-markdown + remark-gfm | 支持 GFM 扩展语法 |
+| 路由引擎 | 自研 resolveRoute | 8 级绑定优先级，跨通道身份链接 |
+| 模型故障转移 | ModelManager | 多 Profile 轮换 + 冷却恢复 + 自动 failover |
+| 工具安全 | ownerOnly 机制 | 高风险工具仅 owner 可用，通道自动过滤 |
+
+### 9.2 前端组件体系（prompt-kit）
+
+```
+components/
+├── ui/                    # 基础 UI 原语（button, tooltip, avatar, collapsible, textarea）
+└── prompt-kit/            # AI 聊天组件
+    ├── chat-container.tsx  # 自动滚动聊天容器（use-stick-to-bottom）
+    ├── message.tsx         # 消息气泡（头像 + 内容 + Markdown）
+    ├── prompt-input.tsx    # 自动调高输入框（Enter 发送，Shift+Enter 换行）
+    ├── tool-call.tsx       # 可折叠的工具调用展示（Collapsible）
+    ├── markdown.tsx        # Markdown 渲染（react-markdown + remarkGfm）
+    ├── loader.tsx          # 加载动画（Typing、Circular）
+    └── scroll-button.tsx   # 滚动到底部按钮
+```
+
+### 9.3 数据库分层
+
+```
+db/
+├── schema.ts     # Drizzle 表定义（sessions, messages, approvals, media_files）
+├── sqlite.ts     # 数据库初始化 + raw SQL migrations + Drizzle 实例
+├── sessions.ts   # SessionStore 类（Drizzle 查询 + 事务）
+└── index.ts      # 统一导出
+```
+
+### 9.4 模型故障转移（ModelManager）
+
+- 每个 Provider（Anthropic/OpenAI）支持多个 Auth Profile
+- 按配置顺序依次尝试，失败后自动切换下一个 Profile
+- 冷却机制：连续 3 次失败 → 60 秒冷却期，期间跳过该 Profile
+- 成功后重置失败计数，冷却期满后自动恢复
+- 所有 Profile 均冷却时，回退到第一个 Profile
+- 集成到 GatewayContext 共享单例，AgentRuntime 自动上报成功/失败
+
+### 9.5 ownerOnly 工具安全
+
+- 高风险工具（shell、file_write、file_edit）标记为 ownerOnly
+- WebChat 前端视为 owner，外部通道默认非 owner
+- `createToolset` 根据 isOwner 参数自动过滤 ownerOnly 工具
+- 通道可通过 ownerIds 配置授予特定用户 owner 权限
+
+### 9.6 通道系统
+
+```
+channels/
+├── types.ts       # 通道核心类型（ChannelAdapter, InboundMessage, Peer 等）
+├── dock.ts        # 通道能力声明（Telegram/Discord/Slack/WebChat 能力矩阵）
+├── dm-policy.ts   # DM 策略检查（open/allowlist/pairing）+ ownerOnly 判定
+├── manager.ts     # 通道管理器：生命周期、消息路由、文本分块
+├── telegram.ts    # Telegram 适配器（grammY）
+├── slack.ts       # Slack 适配器（@slack/bolt Socket Mode）
+├── discord.ts     # Discord 适配器（discord.js v14）
+└── index.ts       # 统一导出
+```
+
+消息流：入站消息 → DM 策略 → 身份链接解析 → 路由绑定匹配 → Agent 执行 → 分块回复
+
+### 9.7 前端页面
+
+| 页面 | 路由 | 状态 | 说明 |
+|------|------|------|------|
+| Chat | `/` | ✅ | 对话界面，集成 prompt-kit，支持流式输出、工具调用展示 |
+| Channels | `/channels` | ✅ | 通道管理：状态指示灯、连接/断开操作、自动轮询 |
+| Sessions | `/sessions` | ✅ | 会话浏览，Agent 筛选、搜索、分页、删除 |
+| Agents | `/agents` | ✅ | 多 Agent CRUD，模型选择、系统提示词 |
+| Cron | `/cron` | ✅ | 定时任务管理：CRUD、手动运行、启用/禁用 |
+| Settings | `/settings` | ✅ | API Key、模型、Gateway 端口配置 |
+| Onboarding | `/onboarding` | ✅ | 首次引导向导（模型 → 通道 → 完成） |
+
+### 9.8 通道健康监控
+
+- ChannelManager 内置 30 秒周期健康检查，自动重连断线适配器
+- 指数退避策略：连续失败后逐步延长重试间隔，避免频繁重试
+- 成功连接后重置计数器，graceful shutdown 时自动停止监控
+
+### 9.9 定时任务（CronService）
+
+- 基于 cron-parser 解析标准 cron 表达式，30 秒 tick 评估执行时机
+- 任务执行调用 AgentRuntime，收集文本结果投递到配置的目标通道
+- 支持手动触发、运行状态跟踪（isRunning / lastRunAt / nextRunAt）
+- 配置热更新：config 变更时自动调用 `refreshSchedules()` 重新同步
+
+### 9.10 向量记忆系统
+
+- `memories` 表 + `memories_fts` FTS5 虚拟表，自动同步触发器（insert/update/delete）
+- 嵌入向量存为 BLOB（Float32Array），JS 端余弦相似度计算，避免 sqlite-vec 平台兼容问题
+- 混合搜索：FTS5 BM25 关键词 + 向量语义，结果融合排序
+- AI SDK `embed()` 生成嵌入，支持 OpenAI Profile + baseUrl 代理
+- 三个 Agent 工具：`memory_store`、`memory_search`、`memory_delete`
+- 通过 `config.memory.enabled` 控制是否启用（默认关闭）
+
+### 9.11 媒体管道
+
+- `MediaStore`：文件上传（Buffer/URL）→ 磁盘存储 + DB 元数据，自动 MIME/扩展名识别
+- 存储路径 `~/.yanclaw/media/{nanoid}.{ext}`，过期清理机制
+- Telegram 适配器提取 photo/document/audio/video/voice 附件 URL
+- AgentRuntime 支持多模态消息：图片 URL → AI SDK image content part
+- 完整链路：Telegram 收图 → 提取 URL → ChannelManager 传递 → Runtime 构建多模态 → 模型视觉理解
+
+### 9.12 浏览器自动化（Playwright）
+
+- 三个工具：`browser_navigate`（打开 + 提取文本）、`browser_screenshot`（截图）、`browser_action`（交互）
+- 懒加载 headless Chromium 单例，跨工具调用复用同一页面
+- ownerOnly 限制，工具组 `group:browser` 支持批量策略
+- 截图返回 base64 data URL，可结合视觉能力分析页面
+
+### 9.13 Onboarding 引导流程
+
+- 服务端 `GET /api/system/setup` 检测是否已配置 API Key（`needsSetup` 布尔值）
+- 前端 `SetupGuard` 组件包裹路由，未配置时自动重定向到 `/onboarding`
+- 3 步向导：① 选择提供商 + 输入 API Key + 选模型 → ② 可选配置通道（Telegram/Slack，可跳过）→ ③ 完成
+- 每步通过 `PATCH /api/config` 保存配置，完成后导航至 Chat 页
+
+### 9.14 插件系统
+
+- **类型定义** (`plugins/types.ts`)：`PluginDefinition`（id/name/version + tools/channels/hooks）
+- **注册表** (`plugins/registry.ts`)：管理已加载插件，工具以 `pluginId.toolName` 命名空间隔离
+- **加载器** (`plugins/loader.ts`)：扫描目录（`~/.yanclaw/plugins/` + 自定义 `plugins.dirs`），动态 `import()` 入口
+- **钩子链**：`onMessageInbound` 可修改/拦截消息，`beforeToolCall`/`afterToolCall` 可拦截/监控工具调用
+- 配置 `plugins.enabled: Record<string, boolean>` 控制启用/禁用
+- 启动顺序：initGateway → startPlugins → startChannels → startCron
+
+### 9.15 Tauri 桌面壳
+
+- **IPC 命令**：`get_auth_token`（读取 auth token）、`get_gateway_port`（读取配置端口）、`start/stop_gateway`（子进程管理）
+- **系统托盘**：显示窗口 / 退出菜单，窗口关闭时最小化到托盘
+- **插件集成**：global-shortcut、updater、single-instance、shell、process
+- **前端集成**：`lib/tauri.ts` 提供 `isTauri()` 检测 + IPC 包装（Gateway 管理、auth token 获取）
+- **安装包**：Windows NSIS（中英双语）+ WiX MSI，macOS .dmg，Linux AppImage

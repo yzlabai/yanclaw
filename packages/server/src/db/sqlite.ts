@@ -1,30 +1,44 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
+import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 import { resolveDataDir } from "../config/store";
+import * as schema from "./schema";
 
-let db: Database | null = null;
+let db: BunSQLiteDatabase<typeof schema> | null = null;
+let rawDb: Database | null = null;
 
-export function getDatabase(): Database {
+export function getDb(): BunSQLiteDatabase<typeof schema> {
 	if (!db) {
 		throw new Error("Database not initialized. Call initDatabase() first.");
 	}
 	return db;
 }
 
-export function initDatabase(dbPath?: string): Database {
+/** Get the raw bun:sqlite Database for low-level ops. */
+export function getRawDatabase(): Database {
+	if (!rawDb) {
+		throw new Error("Database not initialized. Call initDatabase() first.");
+	}
+	return rawDb;
+}
+
+export function initDatabase(dbPath?: string): BunSQLiteDatabase<typeof schema> {
 	const path = dbPath ?? join(resolveDataDir(), "data.db");
-	db = new Database(path);
+	rawDb = new Database(path);
 
-	db.exec("PRAGMA journal_mode=WAL");
-	db.exec("PRAGMA foreign_keys=ON");
-	db.exec("PRAGMA busy_timeout=5000");
+	rawDb.exec("PRAGMA journal_mode=WAL");
+	rawDb.exec("PRAGMA foreign_keys=ON");
+	rawDb.exec("PRAGMA busy_timeout=5000");
 
-	runMigrations(db);
+	// Run raw SQL migrations for initial schema
+	runMigrations(rawDb);
+
+	db = drizzle(rawDb, { schema });
 	return db;
 }
 
-function runMigrations(db: Database): void {
-	db.exec(`
+function runMigrations(database: Database): void {
+	database.exec(`
 		CREATE TABLE IF NOT EXISTS _migrations (
 			version INTEGER PRIMARY KEY,
 			name TEXT NOT NULL,
@@ -33,7 +47,7 @@ function runMigrations(db: Database): void {
 	`);
 
 	const applied = new Set(
-		db
+		database
 			.query<{ version: number }, []>("SELECT version FROM _migrations")
 			.all()
 			.map((r) => r.version),
@@ -41,8 +55,8 @@ function runMigrations(db: Database): void {
 
 	for (const migration of MIGRATIONS) {
 		if (!applied.has(migration.version)) {
-			db.exec(migration.sql);
-			db.run("INSERT INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+			database.exec(migration.sql);
+			database.run("INSERT INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)", [
 				migration.version,
 				migration.name,
 				Date.now(),
@@ -57,7 +71,7 @@ const MIGRATIONS = [
 		version: 1,
 		name: "init",
 		sql: `
-			CREATE TABLE sessions (
+			CREATE TABLE IF NOT EXISTS sessions (
 				key           TEXT PRIMARY KEY,
 				agent_id      TEXT NOT NULL,
 				channel       TEXT,
@@ -71,11 +85,11 @@ const MIGRATIONS = [
 				updated_at    INTEGER NOT NULL
 			);
 
-			CREATE INDEX idx_sessions_agent ON sessions(agent_id);
-			CREATE INDEX idx_sessions_channel ON sessions(channel);
-			CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
+			CREATE INDEX IF NOT EXISTS idx_sessions_channel ON sessions(channel);
+			CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
 
-			CREATE TABLE messages (
+			CREATE TABLE IF NOT EXISTS messages (
 				id            TEXT PRIMARY KEY,
 				session_key   TEXT NOT NULL,
 				role          TEXT NOT NULL,
@@ -88,9 +102,9 @@ const MIGRATIONS = [
 				FOREIGN KEY (session_key) REFERENCES sessions(key) ON DELETE CASCADE
 			);
 
-			CREATE INDEX idx_messages_session ON messages(session_key, created_at);
+			CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_key, created_at);
 
-			CREATE TABLE approvals (
+			CREATE TABLE IF NOT EXISTS approvals (
 				id            TEXT PRIMARY KEY,
 				session_key   TEXT NOT NULL,
 				tool_name     TEXT NOT NULL,
@@ -101,10 +115,10 @@ const MIGRATIONS = [
 				created_at    INTEGER NOT NULL
 			);
 
-			CREATE INDEX idx_approvals_pending ON approvals(status)
+			CREATE INDEX IF NOT EXISTS idx_approvals_pending ON approvals(status)
 				WHERE status = 'pending';
 
-			CREATE TABLE media_files (
+			CREATE TABLE IF NOT EXISTS media_files (
 				id            TEXT PRIMARY KEY,
 				session_key   TEXT,
 				filename      TEXT NOT NULL,
@@ -116,14 +130,59 @@ const MIGRATIONS = [
 				expires_at    INTEGER
 			);
 
-			CREATE INDEX idx_media_session ON media_files(session_key);
-			CREATE INDEX idx_media_expires ON media_files(expires_at)
+			CREATE INDEX IF NOT EXISTS idx_media_session ON media_files(session_key);
+			CREATE INDEX IF NOT EXISTS idx_media_expires ON media_files(expires_at)
 				WHERE expires_at IS NOT NULL;
+		`,
+	},
+	{
+		version: 2,
+		name: "memory_fts",
+		sql: `
+			CREATE TABLE IF NOT EXISTS memories (
+				id            TEXT PRIMARY KEY,
+				agent_id      TEXT NOT NULL,
+				content       TEXT NOT NULL,
+				tags          TEXT,
+				source        TEXT,
+				session_key   TEXT,
+				embedding     BLOB,
+				created_at    INTEGER NOT NULL,
+				updated_at    INTEGER NOT NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent_id);
+			CREATE INDEX IF NOT EXISTS idx_memories_updated ON memories(updated_at DESC);
+
+			CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+				content,
+				tags,
+				content='memories',
+				content_rowid='rowid'
+			);
+
+			CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+				INSERT INTO memories_fts(rowid, content, tags)
+				VALUES (new.rowid, new.content, new.tags);
+			END;
+
+			CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+				INSERT INTO memories_fts(memories_fts, rowid, content, tags)
+				VALUES ('delete', old.rowid, old.content, old.tags);
+			END;
+
+			CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+				INSERT INTO memories_fts(memories_fts, rowid, content, tags)
+				VALUES ('delete', old.rowid, old.content, old.tags);
+				INSERT INTO memories_fts(rowid, content, tags)
+				VALUES (new.rowid, new.content, new.tags);
+			END;
 		`,
 	},
 ];
 
 export function closeDatabase(): void {
-	db?.close();
+	rawDb?.close();
+	rawDb = null;
 	db = null;
 }

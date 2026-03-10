@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-
-const API_BASE = "http://localhost:18789";
+import { API_BASE, apiFetch } from "../lib/api";
 
 export function Settings() {
 	const [anthropicKey, setAnthropicKey] = useState("");
 	const [openaiKey, setOpenaiKey] = useState("");
+	const [googleKey, setGoogleKey] = useState("");
 	const [port, setPort] = useState(18789);
 	const [model, setModel] = useState("claude-sonnet-4-20250514");
 	const [systemPrompt, setSystemPrompt] = useState("");
@@ -12,7 +12,7 @@ export function Settings() {
 	const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
 
 	useEffect(() => {
-		fetch(`${API_BASE}/api/config`)
+		apiFetch(`${API_BASE}/api/config`)
 			.then((r) => r.json())
 			.then((config: Record<string, unknown>) => {
 				const gw = config.gateway as { port?: number } | undefined;
@@ -46,6 +46,11 @@ export function Settings() {
 					profiles: [{ id: "default", apiKey: openaiKey }],
 				};
 			}
+			if (googleKey) {
+				models.google = {
+					profiles: [{ id: "default", apiKey: googleKey }],
+				};
+			}
 			if (Object.keys(models).length > 0) {
 				patch.models = models;
 			}
@@ -65,7 +70,7 @@ export function Settings() {
 				},
 			];
 
-			const res = await fetch(`${API_BASE}/api/config`, {
+			const res = await apiFetch(`${API_BASE}/api/config`, {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(patch),
@@ -111,6 +116,16 @@ export function Settings() {
 								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
 							/>
 						</div>
+						<div>
+							<label className="block text-sm text-gray-400 mb-1">Google AI API Key</label>
+							<input
+								type="password"
+								value={googleKey}
+								onChange={(e) => setGoogleKey(e.target.value)}
+								placeholder="AIza..."
+								className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
+							/>
+						</div>
 					</div>
 				</section>
 
@@ -133,6 +148,11 @@ export function Settings() {
 									<option value="gpt-4o">GPT-4o</option>
 									<option value="gpt-4o-mini">GPT-4o Mini</option>
 									<option value="o3-mini">o3-mini</option>
+								</optgroup>
+								<optgroup label="Google">
+									<option value="gemini-2.5-pro-preview-05-06">Gemini 2.5 Pro</option>
+									<option value="gemini-2.5-flash-preview-04-17">Gemini 2.5 Flash</option>
+									<option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
 								</optgroup>
 							</select>
 						</div>

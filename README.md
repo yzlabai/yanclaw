@@ -31,8 +31,8 @@
 ## 技术栈
 
 - **运行时**：Bun（原生 TS 执行、内置 SQLite）
-- **后端**：Hono + Zod 校验 + Vercel AI SDK（Claude / GPT / Gemini / Ollama）
-- **前端**：React 19 + Vite 6 + Tailwind CSS 4 + Hono RPC 类型安全客户端
+- **后端**：Hono + Zod 校验 + Vercel AI SDK（Claude / GPT / Gemini / Ollama）+ Drizzle ORM
+- **前端**：React 19 + Vite 6 + Tailwind CSS 4 + prompt-kit + Hono RPC 类型安全客户端
 - **桌面**：Tauri v2（Rust 内核，~10MB 体积）
 - **代码质量**：Biome（lint + format）+ Vitest（测试）+ TypeScript strict
 
@@ -43,7 +43,7 @@
 bun install
 
 # 启动开发（分别在两个终端运行）
-bun run dev          # 前端 (http://localhost:1420)
+bun run dev          # 前端 (http://localhost:5173)
 bun run dev:server   # 后端 (http://localhost:18789)
 
 # 或启动 Tauri 桌面应用
@@ -63,6 +63,10 @@ bun run format       # Biome 自动格式化
 
 - [功能设计](docs/DESIGN.md)
 - [功能需求](docs/FEATURES.md)
+- [开发日志](docs/CHANGELOG.md)
+- [数据库设计](docs/DATABASE.md)
+- [开发指南](docs/DEVELOPMENT.md)
+- [API 文档](docs/API.md)
 - [技术选型分析](docs/ANALYSIS_BUN_DESKTOP_APP.md)
 
 ## License

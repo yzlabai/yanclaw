@@ -1,11 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
-import { type CoreMessage, type LanguageModel, streamText } from "ai";
+import { type CoreMessage, generateText, type LanguageModel, streamText } from "ai";
+import type { ApprovalManager } from "../approvals";
 import type { Config } from "../config/schema";
 import { resolveDataDir } from "../config/store";
+import { MemoryStore } from "../db/memories";
 import { SessionStore } from "../db/sessions";
+import { generateEmbedding } from "../memory/embeddings";
+import { ModelManager } from "./model-manager";
 import { createToolset } from "./tools";
 
 export type AgentEvent =
@@ -15,29 +17,55 @@ export type AgentEvent =
 	| { type: "done"; sessionKey: string; usage: { promptTokens: number; completionTokens: number } }
 	| { type: "error"; sessionKey: string; message: string };
 
-function resolveModel(modelId: string, config: Config): LanguageModel {
-	if (modelId.startsWith("gpt-") || modelId.startsWith("o1") || modelId.startsWith("o3")) {
-		const key = config.models.openai?.profiles?.[0]?.apiKey;
-		if (!key) throw new Error("OpenAI API key not configured");
-		return openai(modelId);
-	}
-
-	// Default to Anthropic
-	const key = config.models.anthropic?.profiles?.[0]?.apiKey;
-	if (!key) throw new Error("Anthropic API key not configured");
-	return anthropic(modelId);
-}
-
 export class AgentRuntime {
 	private sessionStore = new SessionStore();
+	private memoryStore = new MemoryStore();
+	private modelManager: ModelManager;
+	private approvalManager?: ApprovalManager;
+
+	constructor(modelManager?: ModelManager, approvalManager?: ApprovalManager) {
+		this.modelManager = modelManager ?? new ModelManager();
+		this.approvalManager = approvalManager;
+	}
+
+	/** Generate a short title for a session (fire-and-forget). */
+	private generateTitle(
+		model: LanguageModel,
+		userMessage: string,
+		assistantReply: string,
+		sessionKey: string,
+	): void {
+		generateText({
+			model,
+			messages: [
+				{
+					role: "user",
+					content: `Generate a very short title (max 6 words, no quotes) for this conversation:\n\nUser: ${userMessage.slice(0, 200)}\nAssistant: ${assistantReply.slice(0, 200)}`,
+				},
+			],
+			maxTokens: 30,
+		})
+			.then((result) => {
+				const title = result.text.trim().replace(/^["']|["']$/g, "");
+				if (title) {
+					this.sessionStore.updateTitle(sessionKey, title);
+				}
+			})
+			.catch((err) => {
+				console.warn("[agent] Failed to generate title:", err.message);
+			});
+	}
 
 	async *run(params: {
 		agentId: string;
 		sessionKey: string;
 		message: string;
 		config: Config;
+		isOwner?: boolean;
+		channelId?: string;
+		imageUrls?: string[];
 	}): AsyncGenerator<AgentEvent> {
-		const { agentId, sessionKey, message, config } = params;
+		const { agentId, sessionKey, message, config, isOwner = true, channelId, imageUrls } = params;
 
 		const agentConfig = config.agents.find((a) => a.id === agentId);
 		if (!agentConfig) {
@@ -53,6 +81,13 @@ export class AgentRuntime {
 			// Ensure session exists
 			this.sessionStore.ensureSession({ key: sessionKey, agentId });
 
+			// Context compression: prune old messages if over budget
+			const contextBudget = config.session.contextBudget;
+			const pruned = this.sessionStore.compact(sessionKey, contextBudget);
+			if (pruned > 0) {
+				console.log(`[agent] Pruned ${pruned} messages from session ${sessionKey}`);
+			}
+
 			// Load history
 			const storedMessages = this.sessionStore.loadMessages(sessionKey);
 			const history: CoreMessage[] = storedMessages.map((m) => ({
@@ -60,74 +95,123 @@ export class AgentRuntime {
 				content: m.content ?? "",
 			}));
 
+			// Memory pre-heating: search for relevant memories on session start
+			let memoryContext = "";
+			if (config.memory.enabled && storedMessages.length === 0) {
+				try {
+					let queryEmbedding: Float32Array | undefined;
+					try {
+						queryEmbedding = await generateEmbedding(message, config);
+					} catch {
+						// Fall back to FTS-only search
+					}
+					const memories = this.memoryStore.search(agentId, message, queryEmbedding, 5);
+					if (memories.length > 0) {
+						const lines = memories.map((m) => `- ${m.content}`);
+						memoryContext = `\n\nRelevant memories:\n${lines.join("\n")}`;
+					}
+				} catch (err) {
+					console.warn("[agent] Memory pre-heat failed:", err);
+				}
+			}
+
+			// Build user message (text or multimodal with images)
+			const userContent: CoreMessage["content"] =
+				imageUrls && imageUrls.length > 0
+					? [
+							{ type: "text" as const, text: message || "What do you see in this image?" },
+							...imageUrls.map((url) => ({
+								type: "image" as const,
+								image: new URL(url),
+							})),
+						]
+					: message;
+
 			// Build messages
+			const systemPrompt = agentConfig.systemPrompt + memoryContext;
 			const messages: CoreMessage[] = [
-				{ role: "system", content: agentConfig.systemPrompt },
+				{ role: "system", content: systemPrompt },
 				...history,
-				{ role: "user", content: message },
+				{ role: "user", content: userContent },
 			];
 
-			// Resolve model
-			const model = resolveModel(agentConfig.model, config);
+			// Resolve model with failover
+			const { model, provider, profileId } = this.modelManager.resolveWithMeta(
+				agentConfig.model,
+				config,
+			);
 
-			// Create tools filtered by policy
+			// Create tools filtered by policy + ownerOnly
 			const tools = createToolset({
 				workspaceDir,
 				toolsConfig: config.tools,
 				agentTools: agentConfig.tools,
+				channelId,
+				isOwner,
+				agentId,
+				config,
+				memoryStore: config.memory.enabled ? this.memoryStore : undefined,
+				sessionKey,
+				approvalManager: this.approvalManager,
 			});
 
-			// Stream execution
-			const result = streamText({
-				model,
-				messages,
-				tools,
-				maxSteps: 25,
-			});
-
+			// Stream execution with failure tracking
 			let fullText = "";
+			let usage: { promptTokens: number; completionTokens: number };
 
-			for await (const part of result.fullStream) {
-				switch (part.type) {
-					case "text-delta":
-						fullText += part.textDelta;
-						yield { type: "delta", sessionKey, text: part.textDelta };
-						break;
+			try {
+				const result = streamText({
+					model,
+					messages,
+					tools,
+					maxSteps: 25,
+				});
 
-					case "tool-call": {
-						yield {
-							type: "tool_call",
-							sessionKey,
-							name: part.toolName,
-							args: part.args,
-						};
-						break;
-					}
+				for await (const part of result.fullStream) {
+					switch (part.type) {
+						case "text-delta":
+							fullText += part.textDelta;
+							yield { type: "delta", sessionKey, text: part.textDelta };
+							break;
 
-					case "tool-result": {
-						yield {
-							type: "tool_result",
-							sessionKey,
-							name: part.toolName,
-							result: part.result,
-							duration: 0,
-						};
-						break;
-					}
+						case "tool-call": {
+							yield {
+								type: "tool_call",
+								sessionKey,
+								name: part.toolName,
+								args: part.args,
+							};
+							break;
+						}
 
-					case "error": {
-						yield {
-							type: "error",
-							sessionKey,
-							message: String(part.error),
-						};
-						break;
+						case "tool-result": {
+							yield {
+								type: "tool_result",
+								sessionKey,
+								name: part.toolName,
+								result: part.result,
+								duration: 0,
+							};
+							break;
+						}
+
+						case "error": {
+							yield {
+								type: "error",
+								sessionKey,
+								message: String(part.error),
+							};
+							break;
+						}
 					}
 				}
-			}
 
-			// Get final usage
-			const usage = await result.usage;
+				usage = await result.usage;
+				this.modelManager.reportSuccess(provider, profileId);
+			} catch (streamErr) {
+				this.modelManager.reportFailure(provider, profileId);
+				throw streamErr;
+			}
 
 			// Save user message + assistant reply
 			this.sessionStore.saveMessages(sessionKey, [
@@ -139,6 +223,12 @@ export class AgentRuntime {
 					tokenCount: usage.completionTokens,
 				},
 			]);
+
+			// Auto-generate session title on first exchange
+			const isFirstExchange = storedMessages.length === 0;
+			if (isFirstExchange && fullText) {
+				this.generateTitle(model, message, fullText, sessionKey);
+			}
 
 			yield {
 				type: "done",

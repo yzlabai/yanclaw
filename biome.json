@@ -5,7 +5,11 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
-			"a11y": { "noLabelWithoutControl": "off" },
+			"a11y": {
+				"noLabelWithoutControl": "off",
+				"noStaticElementInteractions": "off",
+				"useKeyWithClickEvents": "off"
+			},
 			"suspicious": { "noArrayIndexKey": "off" }
 		}
 	},
@@ -19,6 +23,11 @@
 			"quoteStyle": "double",
 			"semicolons": "always"
 		}
+	},
+	"css": {
+		"parser": { "cssModules": true },
+		"linter": { "enabled": false },
+		"formatter": { "enabled": false }
 	},
 	"files": {
 		"includes": ["**", "!**/node_modules", "!**/dist", "!**/src-tauri/target"]

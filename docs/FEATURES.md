@@ -869,47 +869,69 @@ async fn stop_gateway() -> Result<(), String> { /* 终止子进程 */ }
 
 ### P0 — MVP（Phase 1-2）
 
-- [ ] Gateway 服务器（Hono + WebSocket + JSON-RPC）
-- [ ] 单 Agent 对话（Vercel AI SDK + streamText）
-- [ ] 流式输出到前端（WebSocket 推送）
-- [ ] SQLite 会话持久化（bun:sqlite WAL）
-- [ ] 配置系统（Zod + JSON5 + 热重载）
-- [ ] 工具系统 — shell + file（Bun.spawn）
-- [ ] 工具策略 + 执行审批
-- [ ] Tauri 桌面壳 + 系统托盘
-- [ ] Chat 页面（React + 流式渲染）
-- [ ] Settings 页面（API Key + 模型选择）
-- [ ] 内置 WebChat 通道
+- [x] Gateway 服务器（Hono + WebSocket + JSON-RPC）
+- [x] 单 Agent 对话（Vercel AI SDK + streamText）
+- [x] 流式输出到前端（WebSocket 推送）
+- [x] SQLite 会话持久化（bun:sqlite WAL）
+- [x] 配置系统（Zod + JSON5 + 热重载）
+- [x] 工具系统 — shell + file（Bun.spawn）
+- [x] 工具策略（allow/deny + 工具组）
+- [x] Tauri 桌面壳 + 系统托盘
+- [x] Chat 页面（React + 流式渲染）
+- [x] Settings 页面（API Key + 模型选择）
+- [x] 内置 WebChat 通道
 
 ### P1 — 核心功能（Phase 3）
 
-- [ ] Telegram 通道（grammY）
-- [ ] Discord 通道（discord.js）
-- [ ] 消息路由引擎（绑定匹配 + 会话键构建）
-- [ ] DM 策略 + 白名单
-- [ ] 多 Agent 管理
-- [ ] 模型故障转移（多 Profile + 冷却恢复）
-- [ ] 上下文窗口管理 + 自动压缩
-- [ ] Channels 页面 + Sessions 页面
-- [ ] ownerOnly 工具限制
+- [x] Telegram 通道（grammY）
+- [x] Discord 通道（discord.js）
+- [x] 消息路由引擎（绑定匹配 + 会话键构建）
+- [x] DM 策略 + 白名单
+- [x] 多 Agent 管理
+- [x] 模型故障转移（多 Profile + 冷却恢复）
+- [x] 上下文窗口管理 + 自动压缩
+- [x] Channels 页面 + Sessions 页面
+- [x] ownerOnly 工具限制
 
 ### P2 — 完善（Phase 4）
 
-- [ ] Slack 通道（@slack/bolt）
-- [ ] Cron 定时任务
-- [ ] 向量记忆（sqlite-vec + FTS5）
-- [ ] 媒体管道（图片/PDF/音频）
-- [ ] 跨平台身份关联（identityLinks）
-- [ ] web_search + web_fetch 工具
-- [ ] 浏览器自动化（Playwright）
-- [ ] 通道健康监控 + 自动重连
-- [ ] Onboarding 引导流程
+- [x] Slack 通道（@slack/bolt）
+- [x] Cron 定时任务
+- [x] 向量记忆（FTS5 + 余弦相似度混合搜索）
+- [x] 媒体管道（MediaStore 文件存储 + API）
+- [x] 跨平台身份关联（identityLinks）
+- [x] web_search + web_fetch 工具
+- [x] 浏览器自动化（Playwright）
+- [x] 通道健康监控 + 自动重连
+- [x] Onboarding 引导流程
 
 ### P3 — 扩展（Phase 5+）
 
-- [ ] 插件系统（discovery → loader → registry → hooks）
+- [x] 插件系统（discovery → loader → registry → hooks）
+- [x] 会话自动清理（pruneAfterDays 启动时清理）
 - [ ] 更多通道插件（Matrix, LINE, 飞书, WhatsApp...）
-- [ ] 会话自动清理 + 归档
-- [ ] 全局快捷键
-- [ ] 自动更新（Tauri updater）
-- [ ] 安装包分发（.dmg / .msi / .AppImage）
+- [x] 会话归档导出（JSON/Markdown 格式）
+- [x] 全局快捷键绑定（Ctrl+Shift+Y 显示/聚焦窗口）
+- [x] 自动更新（updater 端点 + check/install IPC 命令 + 托盘检查菜单）
+- [x] 安装包分发（bundle targets: all — NSIS/WiX/dmg/AppImage）
+
+### 待完善功能
+
+以下功能已有部分实现但尚未完整：
+
+| 功能 | 当前状态 | 缺失部分 |
+|------|----------|----------|
+| ~~F1.3 Bearer Token 认证~~ | ✅ 已完成 | — |
+| ~~F1.2 JSON-RPC~~ | ✅ 已完成 | — |
+| ~~F2.3 Google AI~~ | ✅ 已完成 | — |
+| ~~F3.4 执行审批~~ | ✅ 已完成 | — |
+| ~~F3.5 工具沙箱~~ | ✅ 已完成 | — |
+| ~~F4.6 WebChat 文件拖拽~~ | ✅ 已完成 | — |
+| ~~F6.3 会话归档导出~~ | ✅ 已完成 | — |
+| ~~F8.2 间隔/单次调度~~ | ✅ 已完成 | — |
+| ~~F9.1 媒体处理~~ | ✅ 已完成 | — |
+| ~~F10.3 记忆自动索引~~ | ✅ 已完成 | — |
+| ~~F10.4 记忆预热~~ | ✅ 已完成 | — |
+| ~~F11.3 插件 Worker 隔离~~ | ✅ 已完成 | — |
+| ~~F12.1 托盘状态指示灯~~ | ✅ 已完成 | — |
+| ~~F12.3 全局快捷键~~ | ✅ 已完成 | — |

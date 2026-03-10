@@ -1,6 +1,16 @@
-import type { ToolsConfig } from "../../config/schema";
+import type { ApprovalManager } from "../../approvals";
+import type { Config, ToolsConfig } from "../../config/schema";
+import type { MemoryStore } from "../../db/memories";
+import {
+	createBrowserActionTool,
+	createBrowserNavigateTool,
+	createBrowserScreenshotTool,
+} from "./browser";
+import { createDockerShellTool } from "./docker-shell";
 import { createFileEditTool, createFileReadTool, createFileWriteTool } from "./file";
+import { createMemoryDeleteTool, createMemorySearchTool, createMemoryStoreTool } from "./memory";
 import { createShellTool } from "./shell";
+import { createWebFetchTool, createWebSearchTool } from "./web";
 
 export type { ToolAuthorizationError, ToolInputError } from "./common";
 
@@ -8,9 +18,18 @@ const TOOL_GROUPS: Record<string, string[]> = {
 	"group:exec": ["shell"],
 	"group:file": ["file_read", "file_write", "file_edit"],
 	"group:web": ["web_search", "web_fetch"],
+	"group:browser": ["browser_navigate", "browser_screenshot", "browser_action"],
+	"group:memory": ["memory_store", "memory_search", "memory_delete"],
 };
 
-const OWNER_ONLY_TOOLS = new Set(["shell", "file_write", "file_edit"]);
+const OWNER_ONLY_TOOLS = new Set([
+	"shell",
+	"file_write",
+	"file_edit",
+	"browser_navigate",
+	"browser_screenshot",
+	"browser_action",
+]);
 
 function expandGroups(names: string[]): string[] {
 	const result: string[] = [];
@@ -74,29 +93,101 @@ export function isToolAllowed(
 	return toolsConfig.policy.default === "allow";
 }
 
+/** Extract the first binary/command name from a shell command string. */
+function extractBinary(command: string): string {
+	const trimmed = command.trimStart();
+	// Skip env vars like VAR=val, sudo, etc.
+	const match = trimmed.match(/^(?:sudo\s+)?(?:\w+=\S+\s+)*(\S+)/);
+	return match?.[1]?.split("/").pop() ?? trimmed.split(/\s/)[0] ?? "";
+}
+
 export function createToolset(opts: {
 	workspaceDir: string;
 	toolsConfig: ToolsConfig;
 	agentTools?: { allow?: string[]; deny?: string[] };
 	channelId?: string;
+	isOwner?: boolean;
+	agentId?: string;
+	config?: Config;
+	memoryStore?: MemoryStore;
+	sessionKey?: string;
+	approvalManager?: ApprovalManager;
 }) {
-	const { workspaceDir, toolsConfig, agentTools, channelId } = opts;
+	const { workspaceDir, toolsConfig, agentTools, channelId, isOwner = true } = opts;
 	const timeout = toolsConfig.exec.timeout;
 	const maxOutput = toolsConfig.exec.maxOutput;
 
+	const sandbox = toolsConfig.exec.sandbox;
 	const allTools: Record<string, ReturnType<typeof createShellTool>> = {
-		shell: createShellTool({ workspaceDir, timeout, maxOutput }),
+		shell: sandbox?.enabled
+			? createDockerShellTool({ workspaceDir, timeout, maxOutput, sandbox })
+			: createShellTool({ workspaceDir, timeout, maxOutput }),
 		file_read: createFileReadTool({ workspaceDir, maxOutput }),
 		file_write: createFileWriteTool({ workspaceDir }),
 		file_edit: createFileEditTool({ workspaceDir }),
+		web_fetch: createWebFetchTool({ maxOutput }),
+		web_search: createWebSearchTool({ maxOutput }),
+		browser_navigate: createBrowserNavigateTool({ maxOutput }),
+		browser_screenshot: createBrowserScreenshotTool(),
+		browser_action: createBrowserActionTool(),
 	};
 
-	// Filter by policy
+	// Add memory tools if memory store is available
+	if (opts.memoryStore && opts.agentId && opts.config) {
+		allTools.memory_store = createMemoryStoreTool({
+			memoryStore: opts.memoryStore,
+			agentId: opts.agentId,
+			config: opts.config,
+			sessionKey: opts.sessionKey,
+		});
+		allTools.memory_search = createMemorySearchTool({
+			memoryStore: opts.memoryStore,
+			agentId: opts.agentId,
+			config: opts.config,
+		});
+		allTools.memory_delete = createMemoryDeleteTool({
+			memoryStore: opts.memoryStore,
+		});
+	}
+
+	// Filter by policy + ownerOnly
 	const tools: Record<string, ReturnType<typeof createShellTool>> = {};
 	for (const [name, t] of Object.entries(allTools)) {
+		// Non-owners cannot use ownerOnly tools
+		if (!isOwner && isOwnerOnlyTool(name)) continue;
 		if (isToolAllowed(name, toolsConfig, agentTools, channelId)) {
 			tools[name] = t;
 		}
+	}
+
+	// Wrap shell tool with approval if configured
+	const { approvalManager } = opts;
+	if (approvalManager && tools.shell && toolsConfig.exec.ask !== "off") {
+		const originalShell = tools.shell;
+		const askMode = toolsConfig.exec.ask;
+		const safeBins = toolsConfig.exec.safeBins;
+		const sessionKey = opts.sessionKey ?? "";
+
+		tools.shell = {
+			...originalShell,
+			execute: async (args: { command: string }, execOpts: unknown) => {
+				const binary = extractBinary(args.command);
+				if (approvalManager.needsApproval(binary, askMode, safeBins)) {
+					const decision = await approvalManager.requestApproval({
+						sessionKey,
+						toolName: "shell",
+						args,
+					});
+					if (decision === "denied") {
+						return { exitCode: 1, output: "Tool execution denied by user." };
+					}
+				}
+				return (originalShell as { execute: (a: unknown, o: unknown) => unknown }).execute(
+					args,
+					execOpts,
+				);
+			},
+		} as typeof originalShell;
 	}
 
 	return tools;
