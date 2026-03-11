@@ -66,6 +66,19 @@ const agentSchema = z.object({
 			z.string(), // "researcher" (preset name)
 		])
 		.optional(),
+	runtime: z.enum(["default", "claude-code"]).default("default"),
+	claudeCode: z
+		.object({
+			allowedTools: z
+				.array(z.string())
+				.default(["Read", "Edit", "Write", "Bash", "Glob", "Grep"]),
+			permissionMode: z
+				.enum(["default", "acceptEdits", "bypassPermissions"])
+				.default("acceptEdits"),
+			maxTurns: z.number().default(50),
+			mcpServers: z.record(z.unknown()).default({}),
+		})
+		.optional(),
 });
 
 const channelAccountSchema = z.object({
