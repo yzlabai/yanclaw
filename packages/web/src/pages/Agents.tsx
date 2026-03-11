@@ -1,4 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "../components/ui/alert-dialog";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
 import { API_BASE, apiFetch } from "../lib/api";
 
 interface AgentData {
@@ -65,11 +81,6 @@ export function Agents() {
 		});
 	};
 
-	const handleEdit = (agent: AgentData) => {
-		setIsNew(false);
-		setEditing({ ...agent });
-	};
-
 	const handleSave = async () => {
 		if (!editing) return;
 		setSaving(true);
@@ -83,7 +94,7 @@ export function Agents() {
 				});
 				if (!res.ok) {
 					const err = await res.json();
-					alert(err.error || "Failed to create agent");
+					toast.error(err.error || "Failed to create agent");
 					return;
 				}
 			} else {
@@ -95,7 +106,7 @@ export function Agents() {
 				});
 				if (!res.ok) {
 					const err = await res.json();
-					alert(err.error || "Failed to update agent");
+					toast.error(err.error || "Failed to update agent");
 					return;
 				}
 			}
@@ -107,104 +118,101 @@ export function Agents() {
 	};
 
 	const handleDelete = async (id: string) => {
-		if (!confirm(`Delete agent "${id}"?`)) return;
 		const res = await apiFetch(`${API_BASE}/api/agents/${id}`, { method: "DELETE" });
-		if (res.ok) fetchAgents();
-		else {
+		if (res.ok) {
+			fetchAgents();
+		} else {
 			const err = await res.json();
-			alert(err.error || "Failed to delete");
+			toast.error(err.error || "Failed to delete");
 		}
 	};
 
 	return (
-		<div className="p-6">
+		<div className="p-6 animate-fade-in-up">
 			<div className="flex items-center justify-between mb-6">
-				<h2 className="text-lg font-semibold">Agents</h2>
-				<button
-					type="button"
-					onClick={handleCreate}
-					className="bg-primary hover:bg-primary/90 text-foreground px-4 py-1.5 rounded-lg text-sm transition-colors"
-				>
-					+ New Agent
-				</button>
+				<h2 className="text-lg font-semibold">Agent 管理</h2>
+				<Button onClick={handleCreate}>+ 新建 Agent</Button>
 			</div>
 
-			{/* Agent list */}
-			<div className="space-y-3 max-w-2xl">
+			{/* Agent card grid */}
+			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 				{agents.map((agent) => (
 					<div
 						key={agent.id}
-						className="bg-card border border-border rounded-lg p-4 flex items-start justify-between"
+						className="bg-card border border-border rounded-2xl p-4 shadow-warm-sm card-hover cursor-pointer"
+						onClick={() => {
+							setIsNew(false);
+							setEditing({ ...agent });
+						}}
 					>
-						<div className="flex-1 min-w-0">
-							<div className="flex items-center gap-2">
-								<span className="font-medium text-foreground">{agent.name}</span>
-								<span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-									{agent.id}
-								</span>
+						<div className="flex items-start justify-between">
+							<div className="flex-1 min-w-0">
+								<h3 className="font-semibold mb-1">{agent.name || agent.id}</h3>
+								<p className="text-xs text-muted-foreground mb-2 truncate">{agent.systemPrompt}</p>
 							</div>
-							<div className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
-								{agent.model}
-								{agent.runtime === "claude-code" && (
-									<span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
-										Claude Code
-									</span>
-								)}
-							</div>
-							<div className="text-xs text-muted-foreground mt-1 truncate">
-								{agent.systemPrompt}
-							</div>
-						</div>
-						<div className="flex gap-2 ml-4">
-							<button
-								type="button"
-								onClick={() => handleEdit(agent)}
-								className="text-muted-foreground hover:text-foreground text-sm px-2 py-1 rounded hover:bg-muted transition-colors"
-							>
-								Edit
-							</button>
 							{agent.id !== "main" && (
-								<button
-									type="button"
-									onClick={() => handleDelete(agent.id)}
-									className="text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded hover:bg-muted transition-colors"
-								>
-									Delete
-								</button>
+								<AlertDialog>
+									<AlertDialogTrigger asChild>
+										<Button
+											variant="ghost"
+											size="sm"
+											className="text-red-400 hover:text-red-300 hover:bg-muted -mr-2 -mt-1"
+											onClick={(e) => e.stopPropagation()}
+										>
+											删除
+										</Button>
+									</AlertDialogTrigger>
+									<AlertDialogContent>
+										<AlertDialogHeader>
+											<AlertDialogTitle>删除 Agent "{agent.id}"？</AlertDialogTitle>
+											<AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+										</AlertDialogHeader>
+										<AlertDialogFooter>
+											<AlertDialogCancel>取消</AlertDialogCancel>
+											<AlertDialogAction onClick={() => handleDelete(agent.id)}>
+												删除
+											</AlertDialogAction>
+										</AlertDialogFooter>
+									</AlertDialogContent>
+								</AlertDialog>
 							)}
+						</div>
+						<div className="flex flex-wrap gap-2">
+							<Badge variant="secondary">{agent.model || "default"}</Badge>
+							{agent.runtime === "claude-code" && <Badge>Claude Code</Badge>}
 						</div>
 					</div>
 				))}
-				{agents.length === 0 && <p className="text-muted-foreground">No agents configured.</p>}
 			</div>
+			{agents.length === 0 && <p className="text-muted-foreground mt-4">No agents configured.</p>}
 
-			{/* Edit modal */}
-			{editing && (
-				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-					<div className="bg-card border border-border rounded-xl p-6 w-full max-w-lg">
-						<h3 className="text-lg font-semibold mb-4">
-							{isNew ? "Create Agent" : `Edit: ${editing.name}`}
-						</h3>
+			{/* Edit dialog */}
+			<Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+				<DialogContent className="rounded-2xl">
+					<DialogHeader>
+						<DialogTitle>{isNew ? "Create Agent" : `Edit: ${editing?.name}`}</DialogTitle>
+					</DialogHeader>
+					{editing && (
 						<div className="space-y-4">
 							<div>
 								<label className="block text-sm text-muted-foreground mb-1">ID</label>
-								<input
+								<Input
 									type="text"
 									value={editing.id}
 									onChange={(e) => setEditing({ ...editing, id: e.target.value })}
 									disabled={!isNew}
 									placeholder="my-agent"
-									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+									className="rounded-xl"
 								/>
 							</div>
 							<div>
 								<label className="block text-sm text-muted-foreground mb-1">Name</label>
-								<input
+								<Input
 									type="text"
 									value={editing.name}
 									onChange={(e) => setEditing({ ...editing, name: e.target.value })}
 									placeholder="My Assistant"
-									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary"
+									className="rounded-xl"
 								/>
 							</div>
 							{editing.runtime !== "claude-code" && (
@@ -248,7 +256,7 @@ export function Agents() {
 									<label className="block text-sm text-muted-foreground mb-1">
 										Workspace Directory
 									</label>
-									<input
+									<Input
 										type="text"
 										value={editing.workspaceDir ?? ""}
 										onChange={(e) =>
@@ -258,7 +266,7 @@ export function Agents() {
 											})
 										}
 										placeholder="/path/to/project"
-										className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary"
+										className="rounded-xl"
 									/>
 								</div>
 							)}
@@ -271,27 +279,18 @@ export function Agents() {
 									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary resize-y"
 								/>
 							</div>
+							<div className="flex justify-end gap-3 mt-6">
+								<Button variant="ghost" onClick={() => setEditing(null)}>
+									取消
+								</Button>
+								<Button onClick={handleSave} disabled={saving || !editing.id || !editing.name}>
+									{saving ? "保存中..." : isNew ? "创建" : "保存"}
+								</Button>
+							</div>
 						</div>
-						<div className="flex justify-end gap-3 mt-6">
-							<button
-								type="button"
-								onClick={() => setEditing(null)}
-								className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
-							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								onClick={handleSave}
-								disabled={saving || !editing.id || !editing.name}
-								className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground px-6 py-2 rounded-lg transition-colors"
-							>
-								{saving ? "Saving..." : isNew ? "Create" : "Save"}
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
+					)}
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

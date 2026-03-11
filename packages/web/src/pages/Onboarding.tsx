@@ -1,8 +1,8 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { API_BASE, apiFetch } from "../lib/api";
-
-const STEPS = ["Model Setup", "Channels", "Ready"] as const;
 
 interface ProviderOption {
 	id: string;
@@ -116,6 +116,35 @@ const PROVIDERS: ProviderOption[] = [
 	},
 ];
 
+function StepIndicator({ current, total }: { current: number; total: number }) {
+	return (
+		<div className="flex items-center justify-center gap-2 mb-8">
+			{Array.from({ length: total }, (_, i) => (
+				<div key={i} className="flex items-center">
+					<div
+						className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+							i < current
+								? "bg-primary text-primary-foreground"
+								: i === current
+									? "bg-primary text-primary-foreground ring-2 ring-primary/30"
+									: "bg-muted text-muted-foreground"
+						}`}
+					>
+						{i < current ? "\u2713" : i + 1}
+					</div>
+					{i < total - 1 && (
+						<div
+							className={`w-8 h-0.5 mx-1 transition-colors ${
+								i < current ? "bg-primary" : "bg-border"
+							}`}
+						/>
+					)}
+				</div>
+			))}
+		</div>
+	);
+}
+
 export function Onboarding() {
 	const navigate = useNavigate();
 	const [step, setStep] = useState(0);
@@ -183,7 +212,7 @@ export function Onboarding() {
 			});
 
 			if (!res.ok) throw new Error("Failed to save config");
-			setStep(1);
+			setStep(2);
 		} catch {
 			setError("Failed to save model configuration. Please check the server is running.");
 		} finally {
@@ -227,7 +256,7 @@ export function Onboarding() {
 				if (!res.ok) throw new Error("Failed to save channels");
 			}
 
-			setStep(2);
+			setStep(3);
 		} catch {
 			setError("Failed to save channel configuration.");
 		} finally {
@@ -238,218 +267,205 @@ export function Onboarding() {
 	const canContinue = providerDef.needsApiKey ? !!apiKey && !!finalModel : !!finalModel;
 
 	return (
-		<div className="flex items-center justify-center h-full">
-			<div className="w-full max-w-lg p-8">
-				{/* Progress */}
-				<div className="flex items-center gap-2 mb-8">
-					{STEPS.map((label, i) => (
-						<div key={label} className="flex items-center gap-2 flex-1">
-							<div
-								className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${
-									i < step
-										? "bg-green-600 text-foreground"
-										: i === step
-											? "bg-primary text-foreground"
-											: "bg-accent text-muted-foreground"
-								}`}
-							>
-								{i < step ? "\u2713" : i + 1}
-							</div>
-							<span
-								className={`text-sm truncate ${i === step ? "text-foreground" : "text-muted-foreground"}`}
-							>
-								{label}
-							</span>
-							{i < STEPS.length - 1 && <div className="flex-1 h-px bg-accent min-w-4" />}
-						</div>
-					))}
-				</div>
-
-				{/* Step 0: Model Setup */}
-				{step === 0 && (
-					<div className="space-y-6">
-						<div>
-							<h2 className="text-xl font-semibold text-foreground mb-1">Welcome to YanClaw</h2>
-							<p className="text-muted-foreground text-sm">
-								Choose your AI model provider and enter your API key.
+		<div className="min-h-screen flex items-center justify-center bg-background p-4">
+			<div className="w-full max-w-lg">
+				<StepIndicator current={step} total={4} />
+				<div className="bg-card rounded-2xl shadow-warm p-8 border border-border">
+					{/* Step 0: Welcome */}
+					{step === 0 && (
+						<div className="text-center space-y-6 animate-fade-in-up">
+							<h2 className="text-3xl font-bold">欢迎使用 YanClaw</h2>
+							<p className="text-muted-foreground text-lg">
+								AI Agent 网关平台，连接聊天频道与 AI Agent
 							</p>
+							<Button size="lg" onClick={() => setStep(1)} className="rounded-xl">
+								开始配置
+							</Button>
 						</div>
+					)}
 
-						<div>
-							<label className="block text-sm text-foreground/80 mb-2">Provider</label>
-							<div className="grid grid-cols-4 gap-2">
-								{PROVIDERS.map((p) => (
-									<button
-										key={p.id}
-										type="button"
-										onClick={() => selectProvider(p)}
-										className={`py-2.5 rounded-lg border text-xs font-medium transition-colors ${
-											providerId === p.id
-												? "border-primary bg-primary/10 text-primary"
-												: "border-border text-muted-foreground hover:border-border hover:bg-muted"
-										}`}
-									>
-										{p.label}
-									</button>
-								))}
-							</div>
-						</div>
-
-						{providerDef.needsApiKey && (
+					{/* Step 1: Model Setup */}
+					{step === 1 && (
+						<div className="space-y-6 animate-fade-in-up">
 							<div>
-								<label className="block text-sm text-foreground/80 mb-1">API Key</label>
-								<input
-									type="password"
-									value={apiKey}
-									onChange={(e) => setApiKey(e.target.value)}
-									placeholder={providerDef.placeholder ?? "API key"}
-									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-								/>
+								<h2 className="text-xl font-bold mb-1">模型配置</h2>
+								<p className="text-muted-foreground text-sm">选择 AI 模型提供商并输入 API Key。</p>
 							</div>
-						)}
 
-						{(providerDef.needsBaseUrl || providerDef.defaultBaseUrl) && (
 							<div>
-								<label className="block text-sm text-foreground/80 mb-1">
-									API Base URL
-									{providerDef.defaultBaseUrl && !providerDef.needsBaseUrl && (
-										<span className="text-muted-foreground font-normal ml-1">(optional)</span>
-									)}
-								</label>
-								<input
-									type="text"
-									value={baseUrl}
-									onChange={(e) => setBaseUrl(e.target.value)}
-									placeholder={providerDef.defaultBaseUrl ?? "https://api.example.com/v1"}
-									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-								/>
-							</div>
-						)}
-
-						<div>
-							<label className="block text-sm text-foreground/80 mb-1">Default Model</label>
-							{hasPresetModels ? (
-								<select
-									value={model}
-									onChange={(e) => setModel(e.target.value)}
-									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
-								>
-									{providerDef.models.map((opt) => (
-										<option key={opt.value} value={opt.value}>
-											{opt.label}
-										</option>
+								<label className="block text-sm text-foreground/80 mb-2">Provider</label>
+								<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+									{PROVIDERS.map((p) => (
+										<button
+											key={p.id}
+											type="button"
+											onClick={() => selectProvider(p)}
+											className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all card-hover ${
+												providerId === p.id
+													? "border-primary bg-primary/10"
+													: "border-border hover:border-primary/50"
+											}`}
+										>
+											<span className="text-sm font-medium">{p.label}</span>
+										</button>
 									))}
-								</select>
-							) : (
-								<input
-									type="text"
-									value={customModel}
-									onChange={(e) => setCustomModel(e.target.value)}
-									placeholder={
-										providerDef.type === "ollama" ? "llama3.3, qwen3:32b, ..." : "model-name"
-									}
-									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-								/>
+								</div>
+							</div>
+
+							{providerDef.needsApiKey && (
+								<div>
+									<label className="block text-sm text-foreground/80 mb-1">API Key</label>
+									<Input
+										type="password"
+										value={apiKey}
+										onChange={(e) => setApiKey(e.target.value)}
+										placeholder={providerDef.placeholder ?? "API key"}
+										className="rounded-xl"
+									/>
+								</div>
 							)}
-						</div>
 
-						{error && <p className="text-red-400 text-sm">{error}</p>}
+							{(providerDef.needsBaseUrl || providerDef.defaultBaseUrl) && (
+								<div>
+									<label className="block text-sm text-foreground/80 mb-1">
+										API Base URL
+										{providerDef.defaultBaseUrl && !providerDef.needsBaseUrl && (
+											<span className="text-muted-foreground font-normal ml-1">(optional)</span>
+										)}
+									</label>
+									<Input
+										type="text"
+										value={baseUrl}
+										onChange={(e) => setBaseUrl(e.target.value)}
+										placeholder={providerDef.defaultBaseUrl ?? "https://api.example.com/v1"}
+										className="rounded-xl"
+									/>
+								</div>
+							)}
 
-						<button
-							type="button"
-							onClick={saveModelConfig}
-							disabled={!canContinue || saving}
-							className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground py-2.5 rounded-lg transition-colors font-medium"
-						>
-							{saving ? "Saving..." : "Continue"}
-						</button>
-					</div>
-				)}
+							<div>
+								<label className="block text-sm text-foreground/80 mb-1">Default Model</label>
+								{hasPresetModels ? (
+									<select
+										value={model}
+										onChange={(e) => setModel(e.target.value)}
+										className="w-full bg-muted rounded-xl px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
+									>
+										{providerDef.models.map((opt) => (
+											<option key={opt.value} value={opt.value}>
+												{opt.label}
+											</option>
+										))}
+									</select>
+								) : (
+									<Input
+										type="text"
+										value={customModel}
+										onChange={(e) => setCustomModel(e.target.value)}
+										placeholder={
+											providerDef.type === "ollama" ? "llama3.3, qwen3:32b, ..." : "model-name"
+										}
+										className="rounded-xl"
+									/>
+								)}
+							</div>
 
-				{/* Step 1: Channels (optional) */}
-				{step === 1 && (
-					<div className="space-y-6">
-						<div>
-							<h2 className="text-xl font-semibold text-foreground mb-1">Connect Channels</h2>
-							<p className="text-muted-foreground text-sm">
-								Optionally connect messaging channels. You can always do this later in Settings.
-							</p>
-						</div>
+							{error && <p className="text-red-400 text-sm">{error}</p>}
 
-						<div>
-							<h3 className="text-sm font-medium text-foreground/80 mb-2">Telegram Bot</h3>
-							<input
-								type="password"
-								value={telegramToken}
-								onChange={(e) => setTelegramToken(e.target.value)}
-								placeholder="Bot token from @BotFather"
-								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-							/>
-						</div>
+							<Button
+								onClick={saveModelConfig}
+								disabled={!canContinue || saving}
+								className="w-full rounded-xl"
+							>
+								{saving ? "保存中..." : "保存并继续"}
+							</Button>
 
-						<div>
-							<h3 className="text-sm font-medium text-foreground/80 mb-2">Slack Bot</h3>
-							<div className="space-y-3">
-								<input
-									type="password"
-									value={slackBotToken}
-									onChange={(e) => setSlackBotToken(e.target.value)}
-									placeholder="Bot token (xoxb-...)"
-									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-								/>
-								<input
-									type="password"
-									value={slackAppToken}
-									onChange={(e) => setSlackAppToken(e.target.value)}
-									placeholder="App token (xapp-...)"
-									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-								/>
+							<div className="flex justify-between mt-8">
+								<Button variant="outline" onClick={() => setStep(step - 1)} className="rounded-xl">
+									上一步
+								</Button>
 							</div>
 						</div>
+					)}
 
-						{error && <p className="text-red-400 text-sm">{error}</p>}
+					{/* Step 2: Channels (optional) */}
+					{step === 2 && (
+						<div className="space-y-6 animate-fade-in-up">
+							<div className="flex items-center justify-between">
+								<h2 className="text-xl font-bold">频道配置</h2>
+								<button
+									type="button"
+									onClick={() => setStep(3)}
+									className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+								>
+									跳过
+								</button>
+							</div>
+							<p className="text-muted-foreground text-sm">
+								可选配置消息频道，也可以稍后在设置中配置。
+							</p>
 
-						<div className="flex gap-3">
-							<button
-								type="button"
-								onClick={() => setStep(2)}
-								className="flex-1 border border-border text-foreground/80 hover:bg-muted py-2.5 rounded-lg transition-colors font-medium"
-							>
-								Skip
-							</button>
-							<button
-								type="button"
+							<div>
+								<h3 className="text-sm font-medium text-foreground/80 mb-2">Telegram Bot</h3>
+								<Input
+									type="password"
+									value={telegramToken}
+									onChange={(e) => setTelegramToken(e.target.value)}
+									placeholder="Bot token from @BotFather"
+									className="rounded-xl"
+								/>
+							</div>
+
+							<div>
+								<h3 className="text-sm font-medium text-foreground/80 mb-2">Slack Bot</h3>
+								<div className="space-y-3">
+									<Input
+										type="password"
+										value={slackBotToken}
+										onChange={(e) => setSlackBotToken(e.target.value)}
+										placeholder="Bot token (xoxb-...)"
+										className="rounded-xl"
+									/>
+									<Input
+										type="password"
+										value={slackAppToken}
+										onChange={(e) => setSlackAppToken(e.target.value)}
+										placeholder="App token (xapp-...)"
+										className="rounded-xl"
+									/>
+								</div>
+							</div>
+
+							{error && <p className="text-red-400 text-sm">{error}</p>}
+
+							<Button
 								onClick={saveChannelConfig}
 								disabled={saving || (!telegramToken && !slackBotToken)}
-								className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground py-2.5 rounded-lg transition-colors font-medium"
+								className="w-full rounded-xl"
 							>
-								{saving ? "Saving..." : "Save & Continue"}
-							</button>
-						</div>
-					</div>
-				)}
+								{saving ? "保存中..." : "保存并继续"}
+							</Button>
 
-				{/* Step 2: Ready */}
-				{step === 2 && (
-					<div className="space-y-6 text-center">
-						<div className="text-5xl">&#127881;</div>
-						<div>
-							<h2 className="text-xl font-semibold text-foreground mb-2">You're All Set!</h2>
-							<p className="text-muted-foreground text-sm">
-								YanClaw is ready to use. Start a conversation or explore the settings to customize
-								further.
-							</p>
+							<div className="flex justify-between mt-8">
+								<Button variant="outline" onClick={() => setStep(step - 1)} className="rounded-xl">
+									上一步
+								</Button>
+							</div>
 						</div>
+					)}
 
-						<button
-							type="button"
-							onClick={() => navigate("/")}
-							className="w-full bg-primary hover:bg-primary/90 text-foreground py-2.5 rounded-lg transition-colors font-medium"
-						>
-							Start Chatting
-						</button>
-					</div>
-				)}
+					{/* Step 3: Ready */}
+					{step === 3 && (
+						<div className="text-center space-y-6 animate-fade-in-up">
+							<div className="text-5xl">🎉</div>
+							<h2 className="text-2xl font-bold">配置完成！</h2>
+							<p className="text-muted-foreground">一切就绪，开始使用 YanClaw</p>
+							<Button size="lg" onClick={() => navigate("/")} className="rounded-xl">
+								进入应用
+							</Button>
+						</div>
+					)}
+				</div>
 			</div>
 		</div>
 	);

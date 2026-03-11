@@ -1,4 +1,9 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Textarea } from "../components/ui/textarea";
 import { API_BASE, apiFetch } from "../lib/api";
 
 type ProviderType = "anthropic" | "openai" | "google" | "ollama" | "openai-compatible";
@@ -35,8 +40,8 @@ interface SystemModelsConfig {
 	stt: string;
 }
 
-const inputCls =
-	"w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring";
+const selectCls =
+	"w-full bg-muted rounded-xl px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring";
 const labelCls = "block text-sm text-muted-foreground mb-1";
 
 export function Settings() {
@@ -54,7 +59,6 @@ export function Settings() {
 	const [model, setModel] = useState("claude-sonnet-4-20250514");
 	const [systemPrompt, setSystemPrompt] = useState("");
 	const [saving, setSaving] = useState(false);
-	const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
 
 	useEffect(() => {
 		apiFetch(`${API_BASE}/api/config`)
@@ -141,7 +145,6 @@ export function Settings() {
 
 	const handleSave = async () => {
 		setSaving(true);
-		setStatus("idle");
 
 		try {
 			const patch: Record<string, unknown> = {};
@@ -200,272 +203,305 @@ export function Settings() {
 			});
 
 			if (res.ok) {
-				setStatus("saved");
-				setTimeout(() => setStatus("idle"), 2000);
+				toast.success("设置已保存");
 			} else {
-				setStatus("error");
+				toast.error("保存失败");
 			}
 		} catch {
-			setStatus("error");
+			toast.error("保存失败");
 		} finally {
 			setSaving(false);
 		}
 	};
 
 	return (
-		<div className="p-6 overflow-y-auto h-full">
-			<h2 className="text-lg font-semibold mb-6">Settings</h2>
-			<div className="space-y-8 max-w-2xl">
+		<div className="p-6 overflow-y-auto h-full max-w-4xl mx-auto animate-fade-in-up">
+			<h2 className="text-lg font-semibold mb-6">设置</h2>
+
+			<Tabs defaultValue="providers" className="w-full">
+				<TabsList className="grid w-full grid-cols-4 rounded-xl">
+					<TabsTrigger value="providers" className="rounded-xl">
+						Providers
+					</TabsTrigger>
+					<TabsTrigger value="models" className="rounded-xl">
+						Models
+					</TabsTrigger>
+					<TabsTrigger value="agent" className="rounded-xl">
+						Default Agent
+					</TabsTrigger>
+					<TabsTrigger value="gateway" className="rounded-xl">
+						Gateway
+					</TabsTrigger>
+				</TabsList>
+
 				{/* Providers */}
-				<section>
-					<div className="flex items-center justify-between mb-3">
-						<h3 className="text-sm font-medium text-foreground/80">Model Providers</h3>
-						<button
-							type="button"
-							onClick={addProvider}
-							className="text-xs text-primary hover:text-primary/80 transition-colors"
-						>
-							+ Add Provider
-						</button>
-					</div>
-					<div className="space-y-4">
-						{providers.map((p, idx) => (
-							<div key={idx} className="border border-border rounded-lg p-4 space-y-3">
-								<div className="flex items-center gap-3">
-									<div className="flex-1">
-										<label className={labelCls}>Name</label>
-										<input
-											type="text"
-											value={p.name}
-											onChange={(e) => updateProvider(idx, "name", e.target.value)}
-											placeholder="anthropic, deepseek, my-proxy..."
-											className={inputCls}
-										/>
-									</div>
-									<div className="flex-1">
-										<label className={labelCls}>Type</label>
-										<select
-											value={p.type}
-											onChange={(e) => updateProvider(idx, "type", e.target.value)}
-											className={inputCls}
+				<TabsContent value="providers" className="mt-4">
+					<div className="rounded-2xl shadow-warm border border-border p-6 space-y-4">
+						<div className="flex items-center justify-between">
+							<h3 className="text-sm font-medium text-foreground/80">Model Providers</h3>
+							<Button variant="ghost" size="sm" onClick={addProvider}>
+								+ Add Provider
+							</Button>
+						</div>
+						<div className="space-y-4">
+							{providers.map((p, idx) => (
+								<div key={idx} className="border border-border rounded-2xl p-4 space-y-3">
+									<div className="flex items-center gap-3">
+										<div className="flex-1">
+											<label className={labelCls}>Name</label>
+											<Input
+												type="text"
+												value={p.name}
+												onChange={(e) => updateProvider(idx, "name", e.target.value)}
+												placeholder="anthropic, deepseek, my-proxy..."
+												className="rounded-xl"
+											/>
+										</div>
+										<div className="flex-1">
+											<label className={labelCls}>Type</label>
+											<select
+												value={p.type}
+												onChange={(e) => updateProvider(idx, "type", e.target.value)}
+												className={selectCls}
+											>
+												{PROVIDER_TYPES.map((t) => (
+													<option key={t.value} value={t.value}>
+														{t.label}
+													</option>
+												))}
+											</select>
+										</div>
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => removeProvider(idx)}
+											className="text-muted-foreground hover:text-red-400 text-lg mt-5"
+											title="Remove provider"
 										>
-											{PROVIDER_TYPES.map((t) => (
-												<option key={t.value} value={t.value}>
-													{t.label}
-												</option>
-											))}
-										</select>
+											&times;
+										</Button>
 									</div>
-									<button
-										type="button"
-										onClick={() => removeProvider(idx)}
-										className="text-muted-foreground hover:text-red-400 text-lg mt-5 transition-colors"
-										title="Remove provider"
-									>
-										&times;
-									</button>
+									{p.type !== "ollama" && (
+										<div>
+											<label className={labelCls}>API Key</label>
+											<Input
+												type="password"
+												value={p.apiKey}
+												onChange={(e) => updateProvider(idx, "apiKey", e.target.value)}
+												placeholder="API key"
+												className="rounded-xl"
+											/>
+										</div>
+									)}
+									{(p.type === "openai-compatible" || p.type === "ollama") && (
+										<div>
+											<label className={labelCls}>Base URL</label>
+											<Input
+												type="text"
+												value={p.baseUrl}
+												onChange={(e) => updateProvider(idx, "baseUrl", e.target.value)}
+												placeholder={
+													p.type === "ollama"
+														? "http://localhost:11434/v1"
+														: "https://api.example.com/v1"
+												}
+												className="rounded-xl"
+											/>
+										</div>
+									)}
 								</div>
-								{p.type !== "ollama" && (
-									<div>
-										<label className={labelCls}>API Key</label>
-										<input
-											type="password"
-											value={p.apiKey}
-											onChange={(e) => updateProvider(idx, "apiKey", e.target.value)}
-											placeholder="API key"
-											className={inputCls}
-										/>
-									</div>
-								)}
-								{(p.type === "openai-compatible" || p.type === "ollama") && (
-									<div>
-										<label className={labelCls}>Base URL</label>
-										<input
-											type="text"
-											value={p.baseUrl}
-											onChange={(e) => updateProvider(idx, "baseUrl", e.target.value)}
-											placeholder={
-												p.type === "ollama"
-													? "http://localhost:11434/v1"
-													: "https://api.example.com/v1"
-											}
-											className={inputCls}
-										/>
-									</div>
-								)}
-							</div>
-						))}
-						{providers.length === 0 && (
-							<p className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
-								No providers configured. Click "Add Provider" to get started.
-							</p>
-						)}
+							))}
+							{providers.length === 0 && (
+								<p className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-2xl">
+									No providers configured. Click "Add Provider" to get started.
+								</p>
+							)}
+						</div>
 					</div>
-				</section>
+				</TabsContent>
 
 				{/* System Models */}
-				<section>
-					<h3 className="text-sm font-medium text-foreground/80 mb-3">
-						System Models
-						<span className="text-muted-foreground font-normal ml-1">
-							(scene &times; preference)
-						</span>
-					</h3>
-					<div className="space-y-4">
-						<div className="border border-border rounded-lg p-4 space-y-3">
-							<h4 className="text-xs font-medium text-foreground/60 uppercase tracking-wide">
-								Chat
-							</h4>
-							<div className="grid grid-cols-2 gap-3">
-								<div>
-									<label className={labelCls}>Default</label>
-									<input
-										type="text"
-										value={systemModels.chatDefault}
-										onChange={(e) =>
-											setSystemModels((prev) => ({ ...prev, chatDefault: e.target.value }))
-										}
-										placeholder="claude-sonnet-4-20250514"
-										className={inputCls}
-									/>
-								</div>
-								<div>
-									<label className={labelCls}>Fast</label>
-									<input
-										type="text"
-										value={systemModels.chatFast}
-										onChange={(e) =>
-											setSystemModels((prev) => ({ ...prev, chatFast: e.target.value }))
-										}
-										placeholder="(optional)"
-										className={inputCls}
-									/>
-								</div>
-								<div>
-									<label className={labelCls}>Quality</label>
-									<input
-										type="text"
-										value={systemModels.chatQuality}
-										onChange={(e) =>
-											setSystemModels((prev) => ({ ...prev, chatQuality: e.target.value }))
-										}
-										placeholder="(optional)"
-										className={inputCls}
-									/>
-								</div>
-								<div>
-									<label className={labelCls}>Cheap</label>
-									<input
-										type="text"
-										value={systemModels.chatCheap}
-										onChange={(e) =>
-											setSystemModels((prev) => ({ ...prev, chatCheap: e.target.value }))
-										}
-										placeholder="(optional)"
-										className={inputCls}
-									/>
+				<TabsContent value="models" className="mt-4">
+					<div className="rounded-2xl shadow-warm border border-border p-6 space-y-4">
+						<h3 className="text-sm font-medium text-foreground/80">
+							System Models
+							<span className="text-muted-foreground font-normal ml-1">
+								(scene &times; preference)
+							</span>
+						</h3>
+						<div className="space-y-4">
+							<div className="border border-border rounded-2xl p-4 space-y-3">
+								<h4 className="text-xs font-medium text-foreground/60 uppercase tracking-wide">
+									Chat
+								</h4>
+								<div className="grid grid-cols-2 gap-3">
+									<div>
+										<label className={labelCls}>Default</label>
+										<Input
+											type="text"
+											value={systemModels.chatDefault}
+											onChange={(e) =>
+												setSystemModels((prev) => ({
+													...prev,
+													chatDefault: e.target.value,
+												}))
+											}
+											placeholder="claude-sonnet-4-20250514"
+											className="rounded-xl"
+										/>
+									</div>
+									<div>
+										<label className={labelCls}>Fast</label>
+										<Input
+											type="text"
+											value={systemModels.chatFast}
+											onChange={(e) =>
+												setSystemModels((prev) => ({
+													...prev,
+													chatFast: e.target.value,
+												}))
+											}
+											placeholder="(optional)"
+											className="rounded-xl"
+										/>
+									</div>
+									<div>
+										<label className={labelCls}>Quality</label>
+										<Input
+											type="text"
+											value={systemModels.chatQuality}
+											onChange={(e) =>
+												setSystemModels((prev) => ({
+													...prev,
+													chatQuality: e.target.value,
+												}))
+											}
+											placeholder="(optional)"
+											className="rounded-xl"
+										/>
+									</div>
+									<div>
+										<label className={labelCls}>Cheap</label>
+										<Input
+											type="text"
+											value={systemModels.chatCheap}
+											onChange={(e) =>
+												setSystemModels((prev) => ({
+													...prev,
+													chatCheap: e.target.value,
+												}))
+											}
+											placeholder="(optional)"
+											className="rounded-xl"
+										/>
+									</div>
 								</div>
 							</div>
-						</div>
 
-						<div className="grid grid-cols-3 gap-3">
-							<div>
-								<label className={labelCls}>Vision</label>
-								<input
-									type="text"
-									value={systemModels.vision}
-									onChange={(e) => setSystemModels((prev) => ({ ...prev, vision: e.target.value }))}
-									placeholder="(falls back to chat)"
-									className={inputCls}
-								/>
-							</div>
-							<div>
-								<label className={labelCls}>Embedding</label>
-								<input
-									type="text"
-									value={systemModels.embedding}
-									onChange={(e) =>
-										setSystemModels((prev) => ({ ...prev, embedding: e.target.value }))
-									}
-									placeholder="text-embedding-3-small"
-									className={inputCls}
-								/>
-							</div>
-							<div>
-								<label className={labelCls}>STT</label>
-								<input
-									type="text"
-									value={systemModels.stt}
-									onChange={(e) => setSystemModels((prev) => ({ ...prev, stt: e.target.value }))}
-									placeholder="whisper-1"
-									className={inputCls}
-								/>
+							<div className="grid grid-cols-3 gap-3">
+								<div>
+									<label className={labelCls}>Vision</label>
+									<Input
+										type="text"
+										value={systemModels.vision}
+										onChange={(e) =>
+											setSystemModels((prev) => ({
+												...prev,
+												vision: e.target.value,
+											}))
+										}
+										placeholder="(falls back to chat)"
+										className="rounded-xl"
+									/>
+								</div>
+								<div>
+									<label className={labelCls}>Embedding</label>
+									<Input
+										type="text"
+										value={systemModels.embedding}
+										onChange={(e) =>
+											setSystemModels((prev) => ({
+												...prev,
+												embedding: e.target.value,
+											}))
+										}
+										placeholder="text-embedding-3-small"
+										className="rounded-xl"
+									/>
+								</div>
+								<div>
+									<label className={labelCls}>STT</label>
+									<Input
+										type="text"
+										value={systemModels.stt}
+										onChange={(e) =>
+											setSystemModels((prev) => ({
+												...prev,
+												stt: e.target.value,
+											}))
+										}
+										placeholder="whisper-1"
+										className="rounded-xl"
+									/>
+								</div>
 							</div>
 						</div>
 					</div>
-				</section>
+				</TabsContent>
 
 				{/* Default Agent */}
-				<section>
-					<h3 className="text-sm font-medium text-foreground/80 mb-3">Default Agent</h3>
-					<div className="space-y-4">
-						<div>
-							<label className={labelCls}>Model ID</label>
-							<input
-								type="text"
-								value={model}
-								onChange={(e) => setModel(e.target.value)}
-								placeholder="claude-sonnet-4-20250514"
-								className={inputCls}
-							/>
-							<p className="text-xs text-muted-foreground mt-1">
-								Fallback model when systemModels is not configured.
-							</p>
-						</div>
-						<div>
-							<label className={labelCls}>System Prompt</label>
-							<textarea
-								value={systemPrompt}
-								onChange={(e) => setSystemPrompt(e.target.value)}
-								placeholder="You are a helpful assistant."
-								rows={4}
-								className={`${inputCls} resize-y`}
-							/>
+				<TabsContent value="agent" className="mt-4">
+					<div className="rounded-2xl shadow-warm border border-border p-6 space-y-4">
+						<h3 className="text-sm font-medium text-foreground/80">Default Agent</h3>
+						<div className="space-y-4">
+							<div>
+								<label className={labelCls}>Model ID</label>
+								<Input
+									type="text"
+									value={model}
+									onChange={(e) => setModel(e.target.value)}
+									placeholder="claude-sonnet-4-20250514"
+									className="rounded-xl"
+								/>
+								<p className="text-xs text-muted-foreground mt-1">
+									Fallback model when systemModels is not configured.
+								</p>
+							</div>
+							<div>
+								<label className={labelCls}>System Prompt</label>
+								<Textarea
+									value={systemPrompt}
+									onChange={(e) => setSystemPrompt(e.target.value)}
+									placeholder="You are a helpful assistant."
+									rows={4}
+									className="rounded-xl resize-y"
+								/>
+							</div>
 						</div>
 					</div>
-				</section>
+				</TabsContent>
 
 				{/* Gateway */}
-				<section>
-					<h3 className="text-sm font-medium text-foreground/80 mb-3">Gateway</h3>
-					<div>
-						<label className={labelCls}>Port</label>
-						<input
-							type="number"
-							value={port}
-							onChange={(e) => setPort(Number(e.target.value))}
-							className={inputCls}
-						/>
+				<TabsContent value="gateway" className="mt-4">
+					<div className="rounded-2xl shadow-warm border border-border p-6 space-y-4">
+						<h3 className="text-sm font-medium text-foreground/80">Gateway</h3>
+						<div>
+							<label className={labelCls}>Port</label>
+							<Input
+								type="number"
+								value={port}
+								onChange={(e) => setPort(Number(e.target.value))}
+								className="rounded-xl"
+							/>
+						</div>
 					</div>
-				</section>
+				</TabsContent>
+			</Tabs>
 
-				<div className="flex items-center gap-4">
-					<button
-						type="button"
-						onClick={handleSave}
-						disabled={saving}
-						className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground px-6 py-2 rounded-lg transition-colors"
-					>
-						{saving ? "Saving..." : "Save Settings"}
-					</button>
-
-					{status === "saved" && (
-						<span className="text-green-400 text-sm">Settings saved successfully.</span>
-					)}
-					{status === "error" && (
-						<span className="text-red-400 text-sm">Failed to save settings.</span>
-					)}
-				</div>
+			<div className="mt-6">
+				<Button onClick={handleSave} disabled={saving} className="rounded-xl">
+					{saving ? "保存中..." : "保存设置"}
+				</Button>
 			</div>
 		</div>
 	);

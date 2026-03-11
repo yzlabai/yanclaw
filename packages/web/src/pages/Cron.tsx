@@ -1,5 +1,30 @@
-import { Clock, Loader2, Pencil, Play, Plus, Trash2, X } from "lucide-react";
+import { Clock, Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "../components/ui/alert-dialog";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Switch } from "../components/ui/switch";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "../components/ui/table";
 import { API_BASE, apiFetch } from "../lib/api";
 
 interface CronTask {
@@ -79,35 +104,46 @@ export function Cron() {
 	};
 
 	const handleSave = async () => {
-		if (!form.id || !form.schedule || !form.prompt) return;
-
-		if (editId) {
-			await apiFetch(`${API_BASE}/api/cron/${editId}`, {
-				method: "PATCH",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					agent: form.agent,
-					mode: form.mode,
-					schedule: form.schedule,
-					prompt: form.prompt,
-					enabled: form.enabled,
-				}),
-			});
-		} else {
-			await apiFetch(`${API_BASE}/api/cron`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(form),
-			});
+		if (!form.id || !form.schedule || !form.prompt) {
+			toast.error("Please fill in all required fields");
+			return;
 		}
 
-		setShowModal(false);
-		fetchTasks();
+		try {
+			if (editId) {
+				await apiFetch(`${API_BASE}/api/cron/${editId}`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						agent: form.agent,
+						mode: form.mode,
+						schedule: form.schedule,
+						prompt: form.prompt,
+						enabled: form.enabled,
+					}),
+				});
+			} else {
+				await apiFetch(`${API_BASE}/api/cron`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(form),
+				});
+			}
+
+			setShowModal(false);
+			fetchTasks();
+		} catch {
+			toast.error("Failed to save task");
+		}
 	};
 
 	const deleteTask = async (id: string) => {
-		await apiFetch(`${API_BASE}/api/cron/${id}`, { method: "DELETE" });
-		fetchTasks();
+		try {
+			await apiFetch(`${API_BASE}/api/cron/${id}`, { method: "DELETE" });
+			fetchTasks();
+		} catch {
+			toast.error("Failed to delete task");
+		}
 	};
 
 	const runTask = async (id: string) => {
@@ -126,12 +162,16 @@ export function Cron() {
 	};
 
 	const toggleEnabled = async (task: CronTask) => {
-		await apiFetch(`${API_BASE}/api/cron/${task.id}`, {
-			method: "PATCH",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ enabled: !task.enabled }),
-		});
-		fetchTasks();
+		try {
+			await apiFetch(`${API_BASE}/api/cron/${task.id}`, {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ enabled: !task.enabled }),
+			});
+			fetchTasks();
+		} catch {
+			toast.error("Failed to toggle task");
+		}
 	};
 
 	const formatTime = (ts: number | null) => {
@@ -147,17 +187,13 @@ export function Cron() {
 	const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
 
 	return (
-		<div className="p-6 h-full flex flex-col">
+		<div className="p-6 h-full flex flex-col animate-fade-in-up">
 			<div className="flex items-center justify-between mb-6">
-				<h2 className="text-lg font-semibold">Cron Tasks</h2>
-				<button
-					type="button"
-					onClick={openCreate}
-					className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary text-foreground hover:bg-primary/90 transition-colors"
-				>
-					<Plus className="size-4" />
-					New Task
-				</button>
+				<h2 className="text-lg font-semibold">定时任务</h2>
+				<Button onClick={openCreate} size="sm" className="rounded-xl">
+					<Plus className="size-4 mr-1.5" />
+					新建任务
+				</Button>
 			</div>
 
 			{tasks.length === 0 ? (
@@ -169,227 +205,235 @@ export function Cron() {
 					</p>
 				</div>
 			) : (
-				<div className="flex-1 overflow-y-auto space-y-3 max-w-3xl">
-					{tasks.map((task) => (
-						<div
-							key={task.id}
-							className={`rounded-lg border px-4 py-3 ${
-								task.enabled
-									? "border-border bg-muted/30"
-									: "border-border/50 bg-card/50 opacity-60"
-							}`}
-						>
-							<div className="flex items-start gap-3">
-								<div className="flex-1 min-w-0">
-									<div className="flex items-center gap-2">
-										<span className="font-medium text-foreground">{task.id}</span>
-										{task.mode !== "cron" && (
-											<span className="text-xs text-purple-400 bg-purple-900/30 px-1.5 py-0.5 rounded">
-												{task.mode}
-											</span>
-										)}
-										<code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-											{task.schedule}
-										</code>
-										<span className="text-xs text-muted-foreground/70">
-											{agentName(task.agent)}
-										</span>
-										{task.isRunning && <Loader2 className="size-3.5 text-primary animate-spin" />}
-									</div>
-									<p className="text-sm text-muted-foreground mt-1 truncate">{task.prompt}</p>
-									<div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
-										<span>Next: {formatTime(task.nextRunAt)}</span>
-										<span>Last: {formatTime(task.lastRunAt)}</span>
-									</div>
-
-									{/* Run result */}
-									{runResult?.id === task.id && (
-										<div className="mt-2 p-2 bg-muted rounded text-xs text-foreground/80 max-h-32 overflow-y-auto whitespace-pre-wrap">
-											{runResult.text}
+				<div className="flex-1 overflow-y-auto rounded-2xl border">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Task ID</TableHead>
+								<TableHead>Mode</TableHead>
+								<TableHead>Schedule</TableHead>
+								<TableHead>Agent</TableHead>
+								<TableHead>Status</TableHead>
+								<TableHead>Next Run</TableHead>
+								<TableHead className="text-right">Actions</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{tasks.map((task) => (
+								<TableRow key={task.id} className={task.enabled ? "" : "opacity-60"}>
+									<TableCell>
+										<div className="flex flex-col gap-1">
+											<span className="font-medium">{task.id}</span>
+											<p className="text-xs text-muted-foreground truncate max-w-48">
+												{task.prompt}
+											</p>
+											{runResult?.id === task.id && (
+												<div className="mt-1 p-2 bg-muted rounded-xl text-xs text-foreground/80 max-h-32 overflow-y-auto whitespace-pre-wrap">
+													{runResult.text}
+												</div>
+											)}
 										</div>
-									)}
-								</div>
-
-								{/* Actions */}
-								<div className="flex items-center gap-1">
-									<button
-										type="button"
-										onClick={() => toggleEnabled(task)}
-										className={`px-2 py-1 text-xs rounded ${
-											task.enabled
-												? "bg-green-900/50 text-green-400"
-												: "bg-muted text-muted-foreground"
-										}`}
-										title={task.enabled ? "Disable" : "Enable"}
-									>
-										{task.enabled ? "ON" : "OFF"}
-									</button>
-									<button
-										type="button"
-										onClick={() => runTask(task.id)}
-										disabled={runningId === task.id}
-										className="p-1.5 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
-										title="Run now"
-									>
-										{runningId === task.id ? (
-											<Loader2 className="size-4 animate-spin" />
-										) : (
-											<Play className="size-4" />
-										)}
-									</button>
-									<button
-										type="button"
-										onClick={() => openEdit(task)}
-										className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-										title="Edit"
-									>
-										<Pencil className="size-4" />
-									</button>
-									<button
-										type="button"
-										onClick={() => deleteTask(task.id)}
-										className="p-1.5 text-muted-foreground hover:text-red-400 transition-colors"
-										title="Delete"
-									>
-										<Trash2 className="size-4" />
-									</button>
-								</div>
-							</div>
-						</div>
-					))}
+									</TableCell>
+									<TableCell>
+										<Badge variant={task.mode === "cron" ? "secondary" : "outline"}>
+											{task.mode}
+										</Badge>
+									</TableCell>
+									<TableCell>
+										<code className="text-xs bg-muted px-1.5 py-0.5 rounded">{task.schedule}</code>
+									</TableCell>
+									<TableCell className="text-sm text-muted-foreground">
+										{agentName(task.agent)}
+									</TableCell>
+									<TableCell>
+										<div className="flex items-center gap-2">
+											<Switch checked={task.enabled} onCheckedChange={() => toggleEnabled(task)} />
+											{task.isRunning && <Loader2 className="size-3.5 text-primary animate-spin" />}
+										</div>
+									</TableCell>
+									<TableCell>
+										<div className="flex flex-col text-xs text-muted-foreground">
+											<span>Next: {formatTime(task.nextRunAt)}</span>
+											<span>Last: {formatTime(task.lastRunAt)}</span>
+										</div>
+									</TableCell>
+									<TableCell className="text-right">
+										<div className="flex items-center justify-end gap-1">
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() => runTask(task.id)}
+												disabled={runningId === task.id}
+												title="Run now"
+											>
+												{runningId === task.id ? (
+													<Loader2 className="size-4 animate-spin" />
+												) : (
+													<Play className="size-4" />
+												)}
+											</Button>
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() => openEdit(task)}
+												title="Edit"
+											>
+												<Pencil className="size-4" />
+											</Button>
+											<AlertDialog>
+												<AlertDialogTrigger asChild>
+													<Button
+														variant="ghost"
+														size="icon"
+														className="hover:text-red-400"
+														title="删除"
+													>
+														<Trash2 className="size-4" />
+													</Button>
+												</AlertDialogTrigger>
+												<AlertDialogContent>
+													<AlertDialogHeader>
+														<AlertDialogTitle>删除任务 "{task.id}"？</AlertDialogTitle>
+														<AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+													</AlertDialogHeader>
+													<AlertDialogFooter>
+														<AlertDialogCancel>取消</AlertDialogCancel>
+														<AlertDialogAction onClick={() => deleteTask(task.id)}>
+															删除
+														</AlertDialogAction>
+													</AlertDialogFooter>
+												</AlertDialogContent>
+											</AlertDialog>
+										</div>
+									</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
 				</div>
 			)}
 
-			{/* Create/Edit Modal */}
-			{showModal && (
-				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-					<div className="bg-card border border-accent rounded-xl w-full max-w-md p-6">
-						<div className="flex items-center justify-between mb-4">
-							<h3 className="text-lg font-semibold">{editId ? "Edit Task" : "New Cron Task"}</h3>
-							<button
-								type="button"
-								onClick={() => setShowModal(false)}
-								className="text-muted-foreground hover:text-foreground"
+			{/* Create/Edit Dialog */}
+			<Dialog open={showModal} onOpenChange={setShowModal}>
+				<DialogContent className="rounded-2xl">
+					<DialogHeader>
+						<DialogTitle>{editId ? "编辑任务" : "新建定时任务"}</DialogTitle>
+					</DialogHeader>
+
+					<div className="space-y-4">
+						{!editId && (
+							<div>
+								<label className="block text-sm text-muted-foreground mb-1">Task ID</label>
+								<Input
+									type="text"
+									value={form.id}
+									onChange={(e) => setForm({ ...form, id: e.target.value })}
+									placeholder="daily-summary"
+									className="rounded-xl"
+								/>
+							</div>
+						)}
+
+						<div>
+							<label className="block text-sm text-muted-foreground mb-1">Mode</label>
+							<select
+								value={form.mode}
+								onChange={(e) =>
+									setForm({
+										...form,
+										mode: e.target.value as "cron" | "interval" | "once",
+									})
+								}
+								className="w-full bg-muted rounded-xl px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
 							>
-								<X className="size-5" />
-							</button>
+								<option value="cron">Cron Expression</option>
+								<option value="interval">Interval</option>
+								<option value="once">One-time</option>
+							</select>
 						</div>
 
-						<div className="space-y-4">
-							{!editId && (
-								<div>
-									<label className="block text-sm text-muted-foreground mb-1">Task ID</label>
-									<input
-										type="text"
-										value={form.id}
-										onChange={(e) => setForm({ ...form, id: e.target.value })}
-										placeholder="daily-summary"
-										className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-									/>
-								</div>
-							)}
-
-							<div>
-								<label className="block text-sm text-muted-foreground mb-1">Mode</label>
-								<select
-									value={form.mode}
-									onChange={(e) =>
-										setForm({ ...form, mode: e.target.value as "cron" | "interval" | "once" })
-									}
-									className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-								>
-									<option value="cron">Cron Expression</option>
-									<option value="interval">Interval</option>
-									<option value="once">One-time</option>
-								</select>
-							</div>
-
-							<div>
-								<label className="block text-sm text-muted-foreground mb-1">
-									{form.mode === "cron"
-										? "Schedule (cron expression)"
-										: form.mode === "interval"
-											? "Interval"
-											: "Run At"}
-								</label>
-								<input
-									type={form.mode === "once" ? "datetime-local" : "text"}
-									value={form.schedule}
-									onChange={(e) => setForm({ ...form, schedule: e.target.value })}
-									placeholder={
-										form.mode === "cron" ? "0 9 * * *" : form.mode === "interval" ? "5m" : ""
-									}
-									className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-								/>
-								<p className="text-xs text-muted-foreground/70 mt-1">
-									{form.mode === "cron"
-										? 'e.g. "0 9 * * *" = every day at 9:00, "*/30 * * * *" = every 30 min'
-										: form.mode === "interval"
-											? 'e.g. "30s", "5m", "2h", "1d"'
-											: "Select a date and time for a one-time run"}
-								</p>
-							</div>
-
-							<div>
-								<label className="block text-sm text-muted-foreground mb-1">Agent</label>
-								<select
-									value={form.agent}
-									onChange={(e) => setForm({ ...form, agent: e.target.value })}
-									className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-								>
-									{agents.map((a) => (
-										<option key={a.id} value={a.id}>
-											{a.name}
-										</option>
-									))}
-								</select>
-							</div>
-
-							<div>
-								<label className="block text-sm text-muted-foreground mb-1">Prompt</label>
-								<textarea
-									value={form.prompt}
-									onChange={(e) => setForm({ ...form, prompt: e.target.value })}
-									placeholder="Summarize today's news..."
-									rows={3}
-									className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring resize-y"
-								/>
-							</div>
-
-							<div className="flex items-center gap-2">
-								<input
-									type="checkbox"
-									checked={form.enabled}
-									onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-									className="rounded"
-									id="cron-enabled"
-								/>
-								<label htmlFor="cron-enabled" className="text-sm text-muted-foreground">
-									Enabled
-								</label>
-							</div>
+						<div>
+							<label className="block text-sm text-muted-foreground mb-1">
+								{form.mode === "cron"
+									? "Schedule (cron expression)"
+									: form.mode === "interval"
+										? "Interval"
+										: "Run At"}
+							</label>
+							<Input
+								type={form.mode === "once" ? "datetime-local" : "text"}
+								value={form.schedule}
+								onChange={(e) => setForm({ ...form, schedule: e.target.value })}
+								placeholder={
+									form.mode === "cron" ? "0 9 * * *" : form.mode === "interval" ? "5m" : ""
+								}
+								className="rounded-xl"
+							/>
+							<p className="text-xs text-muted-foreground/70 mt-1">
+								{form.mode === "cron"
+									? 'e.g. "0 9 * * *" = every day at 9:00, "*/30 * * * *" = every 30 min'
+									: form.mode === "interval"
+										? 'e.g. "30s", "5m", "2h", "1d"'
+										: "Select a date and time for a one-time run"}
+							</p>
 						</div>
 
-						<div className="flex gap-3 mt-6">
-							<button
-								type="button"
-								onClick={() => setShowModal(false)}
-								className="flex-1 px-4 py-2 text-sm rounded-lg bg-muted text-foreground/80 hover:bg-accent transition-colors"
+						<div>
+							<label className="block text-sm text-muted-foreground mb-1">Agent</label>
+							<select
+								value={form.agent}
+								onChange={(e) => setForm({ ...form, agent: e.target.value })}
+								className="w-full bg-muted rounded-xl px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
 							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								onClick={handleSave}
-								disabled={!form.schedule || !form.prompt || (!editId && !form.id)}
-								className="flex-1 px-4 py-2 text-sm rounded-lg bg-primary text-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-							>
-								{editId ? "Save" : "Create"}
-							</button>
+								{agents.map((a) => (
+									<option key={a.id} value={a.id}>
+										{a.name}
+									</option>
+								))}
+							</select>
+						</div>
+
+						<div>
+							<label className="block text-sm text-muted-foreground mb-1">Prompt</label>
+							<textarea
+								value={form.prompt}
+								onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+								placeholder="Summarize today's news..."
+								rows={3}
+								className="w-full bg-muted rounded-xl px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring resize-y"
+							/>
+						</div>
+
+						<div className="flex items-center gap-2">
+							<Switch
+								id="cron-enabled"
+								checked={form.enabled}
+								onCheckedChange={(checked) => setForm({ ...form, enabled: checked })}
+							/>
+							<label htmlFor="cron-enabled" className="text-sm text-muted-foreground">
+								Enabled
+							</label>
 						</div>
 					</div>
-				</div>
-			)}
+
+					<div className="flex gap-3 mt-2">
+						<Button
+							variant="outline"
+							className="flex-1 rounded-xl"
+							onClick={() => setShowModal(false)}
+						>
+							取消
+						</Button>
+						<Button
+							className="flex-1 rounded-xl"
+							onClick={handleSave}
+							disabled={!form.schedule || !form.prompt || (!editId && !form.id)}
+						>
+							{editId ? "保存" : "创建"}
+						</Button>
+					</div>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

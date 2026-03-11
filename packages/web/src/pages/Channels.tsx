@@ -1,5 +1,7 @@
 import { Power, PowerOff, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { API_BASE, apiFetch } from "../lib/api";
 
 interface ChannelInfo {
@@ -9,25 +11,26 @@ interface ChannelInfo {
 	status: "connected" | "disconnected" | "connecting" | "error";
 }
 
-const STATUS_COLORS: Record<string, string> = {
-	connected: "bg-green-500",
-	disconnected: "bg-muted-foreground",
-	connecting: "bg-yellow-500 animate-pulse",
-	error: "bg-red-500",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-	connected: "Connected",
-	disconnected: "Disconnected",
-	connecting: "Connecting...",
-	error: "Error",
-};
-
 const CHANNEL_ICONS: Record<string, string> = {
 	telegram: "✈",
 	discord: "🎮",
 	slack: "💬",
 	webchat: "🌐",
+};
+
+const statusBadge = (status: string) => {
+	switch (status) {
+		case "connected":
+			return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">在线</Badge>;
+		case "connecting":
+			return (
+				<Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">连接中</Badge>
+			);
+		case "error":
+			return <Badge variant="destructive">错误</Badge>;
+		default:
+			return <Badge variant="secondary">离线</Badge>;
+	}
 };
 
 export function Channels() {
@@ -85,24 +88,19 @@ export function Channels() {
 	if (loading) {
 		return (
 			<div className="p-6">
-				<h2 className="text-lg font-semibold mb-4">Channels</h2>
+				<h2 className="text-lg font-semibold mb-4">频道</h2>
 				<p className="text-muted-foreground">Loading...</p>
 			</div>
 		);
 	}
 
 	return (
-		<div className="p-6">
+		<div className="p-6 animate-fade-in-up">
 			<div className="flex items-center justify-between mb-6">
-				<h2 className="text-lg font-semibold">Channels</h2>
-				<button
-					type="button"
-					onClick={fetchChannels}
-					className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted transition-colors"
-					title="Refresh"
-				>
+				<h2 className="text-lg font-semibold">频道</h2>
+				<Button variant="ghost" size="icon" onClick={fetchChannels} title="刷新">
 					<RefreshCw className="size-4" />
-				</button>
+				</Button>
 			</div>
 
 			{channels.length === 0 ? (
@@ -121,60 +119,50 @@ export function Channels() {
 						return (
 							<div
 								key={key}
-								className="flex items-center gap-4 px-4 py-3 rounded-lg bg-muted/50 border border-border"
+								className="bg-card border border-border rounded-2xl p-4 shadow-warm-sm"
 							>
-								{/* Icon */}
-								<span className="text-2xl" title={ch.type}>
-									{CHANNEL_ICONS[ch.type] ?? "📡"}
-								</span>
-
-								{/* Info */}
-								<div className="flex-1 min-w-0">
-									<div className="flex items-center gap-2">
-										<span className="font-medium text-foreground capitalize">{ch.type}</span>
-										<span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-											{ch.accountId}
+								<div className="flex items-center justify-between">
+									<div className="flex items-center gap-3">
+										<span className="text-2xl" title={ch.type}>
+											{CHANNEL_ICONS[ch.type] ?? "📡"}
 										</span>
-									</div>
-									<div className="flex items-center gap-2 mt-1">
-										<span
-											className={`inline-block size-2 rounded-full ${STATUS_COLORS[ch.status]}`}
-										/>
-										<span className="text-xs text-muted-foreground">
-											{STATUS_LABELS[ch.status]}
-										</span>
+										<div>
+											<span className="font-medium text-foreground capitalize">{ch.type}</span>
+											{ch.accountId && (
+												<span className="text-sm text-muted-foreground ml-2">{ch.accountId}</span>
+											)}
+										</div>
+										{statusBadge(ch.status)}
 										{!ch.enabled && (
-											<span className="text-xs text-muted-foreground/70">(disabled)</span>
+											<Badge variant="outline" className="text-muted-foreground/70">
+												disabled
+											</Badge>
 										)}
+									</div>
+									<div className="flex items-center gap-3">
+										{ch.enabled &&
+											(ch.status === "connected" ? (
+												<Button
+													variant="secondary"
+													size="sm"
+													onClick={() => disconnectChannel(ch.type, ch.accountId)}
+													disabled={isActing}
+												>
+													<PowerOff className="size-3.5" />
+													Disconnect
+												</Button>
+											) : (
+												<Button
+													size="sm"
+													onClick={() => connectChannel(ch.type, ch.accountId)}
+													disabled={isActing}
+												>
+													<Power className="size-3.5" />
+													Connect
+												</Button>
+											))}
 									</div>
 								</div>
-
-								{/* Actions */}
-								{ch.enabled && (
-									<div className="flex gap-2">
-										{ch.status === "connected" ? (
-											<button
-												type="button"
-												onClick={() => disconnectChannel(ch.type, ch.accountId)}
-												disabled={isActing}
-												className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-accent text-foreground/80 hover:bg-accent hover:text-foreground disabled:opacity-50 transition-colors"
-											>
-												<PowerOff className="size-3.5" />
-												Disconnect
-											</button>
-										) : (
-											<button
-												type="button"
-												onClick={() => connectChannel(ch.type, ch.accountId)}
-												disabled={isActing}
-												className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-primary text-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-											>
-												<Power className="size-3.5" />
-												Connect
-											</button>
-										)}
-									</div>
-								)}
 							</div>
 						);
 					})}
