@@ -289,9 +289,7 @@ export function Onboarding() {
 						<div className="space-y-6 animate-fade-in-up">
 							<div>
 								<h2 className="text-xl font-bold mb-1">模型配置</h2>
-								<p className="text-muted-foreground text-sm">
-									Choose your AI model provider and enter your API key.
-								</p>
+								<p className="text-muted-foreground text-sm">选择 AI 模型提供商并输入 API Key。</p>
 							</div>
 
 							<div>
@@ -379,7 +377,7 @@ export function Onboarding() {
 								disabled={!canContinue || saving}
 								className="w-full rounded-xl"
 							>
-								{saving ? "Saving..." : "Continue"}
+								{saving ? "保存中..." : "保存并继续"}
 							</Button>
 
 							<div className="flex justify-between mt-8">
@@ -404,7 +402,7 @@ export function Onboarding() {
 								</button>
 							</div>
 							<p className="text-muted-foreground text-sm">
-								Optionally connect messaging channels. You can always do this later in Settings.
+								可选配置消息频道，也可以稍后在设置中配置。
 							</p>
 
 							<div>
@@ -445,7 +443,7 @@ export function Onboarding() {
 								disabled={saving || (!telegramToken && !slackBotToken)}
 								className="w-full rounded-xl"
 							>
-								{saving ? "Saving..." : "Save & Continue"}
+								{saving ? "保存中..." : "保存并继续"}
 							</Button>
 
 							<div className="flex justify-between mt-8">

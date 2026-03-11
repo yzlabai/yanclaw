@@ -216,7 +216,7 @@ export function Settings() {
 
 	return (
 		<div className="p-6 overflow-y-auto h-full max-w-4xl mx-auto animate-fade-in-up">
-			<h2 className="text-lg font-semibold mb-6">Settings</h2>
+			<h2 className="text-lg font-semibold mb-6">设置</h2>
 
 			<Tabs defaultValue="providers" className="w-full">
 				<TabsList className="grid w-full grid-cols-4 rounded-xl">
@@ -500,7 +500,7 @@ export function Settings() {
 
 			<div className="mt-6">
 				<Button onClick={handleSave} disabled={saving} className="rounded-xl">
-					{saving ? "Saving..." : "Save Settings"}
+					{saving ? "保存中..." : "保存设置"}
 				</Button>
 			</div>
 		</div>

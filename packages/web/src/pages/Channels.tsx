@@ -88,7 +88,7 @@ export function Channels() {
 	if (loading) {
 		return (
 			<div className="p-6">
-				<h2 className="text-lg font-semibold mb-4">Channels</h2>
+				<h2 className="text-lg font-semibold mb-4">频道</h2>
 				<p className="text-muted-foreground">Loading...</p>
 			</div>
 		);
@@ -97,8 +97,8 @@ export function Channels() {
 	return (
 		<div className="p-6 animate-fade-in-up">
 			<div className="flex items-center justify-between mb-6">
-				<h2 className="text-lg font-semibold">Channels</h2>
-				<Button variant="ghost" size="icon" onClick={fetchChannels} title="Refresh">
+				<h2 className="text-lg font-semibold">频道</h2>
+				<Button variant="ghost" size="icon" onClick={fetchChannels} title="刷新">
 					<RefreshCw className="size-4" />
 				</Button>
 			</div>

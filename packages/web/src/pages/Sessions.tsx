@@ -1,6 +1,17 @@
 import { Clock, Download, MessageSquare, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -133,7 +144,7 @@ export function Sessions() {
 	return (
 		<div className="p-6 h-full flex flex-col animate-fade-in-up">
 			<div className="flex items-center justify-between mb-4">
-				<h2 className="text-lg font-semibold">Sessions</h2>
+				<h2 className="text-lg font-semibold">会话历史</h2>
 				<span className="text-sm text-muted-foreground">{total} total</span>
 			</div>
 
@@ -217,15 +228,30 @@ export function Sessions() {
 									>
 										<Download className="size-4" />
 									</Button>
-									<Button
-										variant="ghost"
-										size="icon-xs"
-										onClick={() => deleteSession(s.key)}
-										title="Delete session"
-										className="text-muted-foreground hover:text-red-400"
-									>
-										<Trash2 className="size-4" />
-									</Button>
+									<AlertDialog>
+										<AlertDialogTrigger asChild>
+											<Button
+												variant="ghost"
+												size="icon-xs"
+												title="删除会话"
+												className="text-muted-foreground hover:text-red-400"
+											>
+												<Trash2 className="size-4" />
+											</Button>
+										</AlertDialogTrigger>
+										<AlertDialogContent>
+											<AlertDialogHeader>
+												<AlertDialogTitle>删除此会话？</AlertDialogTitle>
+												<AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+											</AlertDialogHeader>
+											<AlertDialogFooter>
+												<AlertDialogCancel>取消</AlertDialogCancel>
+												<AlertDialogAction onClick={() => deleteSession(s.key)}>
+													删除
+												</AlertDialogAction>
+											</AlertDialogFooter>
+										</AlertDialogContent>
+									</AlertDialog>
 								</div>
 							</div>
 						))}

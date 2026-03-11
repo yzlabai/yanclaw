@@ -130,8 +130,8 @@ export function Agents() {
 	return (
 		<div className="p-6 animate-fade-in-up">
 			<div className="flex items-center justify-between mb-6">
-				<h2 className="text-lg font-semibold">Agents</h2>
-				<Button onClick={handleCreate}>+ New Agent</Button>
+				<h2 className="text-lg font-semibold">Agent 管理</h2>
+				<Button onClick={handleCreate}>+ 新建 Agent</Button>
 			</div>
 
 			{/* Agent card grid */}
@@ -159,18 +159,18 @@ export function Agents() {
 											className="text-red-400 hover:text-red-300 hover:bg-muted -mr-2 -mt-1"
 											onClick={(e) => e.stopPropagation()}
 										>
-											Delete
+											删除
 										</Button>
 									</AlertDialogTrigger>
 									<AlertDialogContent>
 										<AlertDialogHeader>
-											<AlertDialogTitle>Delete agent "{agent.id}"?</AlertDialogTitle>
-											<AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+											<AlertDialogTitle>删除 Agent "{agent.id}"？</AlertDialogTitle>
+											<AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
 										</AlertDialogHeader>
 										<AlertDialogFooter>
-											<AlertDialogCancel>Cancel</AlertDialogCancel>
+											<AlertDialogCancel>取消</AlertDialogCancel>
 											<AlertDialogAction onClick={() => handleDelete(agent.id)}>
-												Delete
+												删除
 											</AlertDialogAction>
 										</AlertDialogFooter>
 									</AlertDialogContent>
@@ -281,10 +281,10 @@ export function Agents() {
 							</div>
 							<div className="flex justify-end gap-3 mt-6">
 								<Button variant="ghost" onClick={() => setEditing(null)}>
-									Cancel
+									取消
 								</Button>
 								<Button onClick={handleSave} disabled={saving || !editing.id || !editing.name}>
-									{saving ? "Saving..." : isNew ? "Create" : "Save"}
+									{saving ? "保存中..." : isNew ? "创建" : "保存"}
 								</Button>
 							</div>
 						</div>

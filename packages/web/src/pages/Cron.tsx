@@ -1,6 +1,17 @@
 import { Clock, Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "../components/ui/alert-dialog";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
@@ -178,10 +189,10 @@ export function Cron() {
 	return (
 		<div className="p-6 h-full flex flex-col animate-fade-in-up">
 			<div className="flex items-center justify-between mb-6">
-				<h2 className="text-lg font-semibold">Cron Tasks</h2>
+				<h2 className="text-lg font-semibold">定时任务</h2>
 				<Button onClick={openCreate} size="sm" className="rounded-xl">
 					<Plus className="size-4 mr-1.5" />
-					New Task
+					新建任务
 				</Button>
 			</div>
 
@@ -269,15 +280,30 @@ export function Cron() {
 											>
 												<Pencil className="size-4" />
 											</Button>
-											<Button
-												variant="ghost"
-												size="icon"
-												onClick={() => deleteTask(task.id)}
-												className="hover:text-red-400"
-												title="Delete"
-											>
-												<Trash2 className="size-4" />
-											</Button>
+											<AlertDialog>
+												<AlertDialogTrigger asChild>
+													<Button
+														variant="ghost"
+														size="icon"
+														className="hover:text-red-400"
+														title="删除"
+													>
+														<Trash2 className="size-4" />
+													</Button>
+												</AlertDialogTrigger>
+												<AlertDialogContent>
+													<AlertDialogHeader>
+														<AlertDialogTitle>删除任务 "{task.id}"？</AlertDialogTitle>
+														<AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+													</AlertDialogHeader>
+													<AlertDialogFooter>
+														<AlertDialogCancel>取消</AlertDialogCancel>
+														<AlertDialogAction onClick={() => deleteTask(task.id)}>
+															删除
+														</AlertDialogAction>
+													</AlertDialogFooter>
+												</AlertDialogContent>
+											</AlertDialog>
 										</div>
 									</TableCell>
 								</TableRow>
@@ -291,7 +317,7 @@ export function Cron() {
 			<Dialog open={showModal} onOpenChange={setShowModal}>
 				<DialogContent className="rounded-2xl">
 					<DialogHeader>
-						<DialogTitle>{editId ? "Edit Task" : "New Cron Task"}</DialogTitle>
+						<DialogTitle>{editId ? "编辑任务" : "新建定时任务"}</DialogTitle>
 					</DialogHeader>
 
 					<div className="space-y-4">
@@ -396,14 +422,14 @@ export function Cron() {
 							className="flex-1 rounded-xl"
 							onClick={() => setShowModal(false)}
 						>
-							Cancel
+							取消
 						</Button>
 						<Button
 							className="flex-1 rounded-xl"
 							onClick={handleSave}
 							disabled={!form.schedule || !form.prompt || (!editId && !form.id)}
 						>
-							{editId ? "Save" : "Create"}
+							{editId ? "保存" : "创建"}
 						</Button>
 					</div>
 				</DialogContent>
