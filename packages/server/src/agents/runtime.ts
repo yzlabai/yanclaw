@@ -15,6 +15,7 @@ import {
 	SAFETY_SUFFIX,
 	wrapUntrustedContent,
 } from "../security/sanitize";
+import { runClaudeCode } from "./claude-code-runtime";
 import { ModelManager } from "./model-manager";
 import { createToolset } from "./tools";
 
@@ -102,6 +103,31 @@ export class AgentRuntime {
 		const agentConfig = config.agents.find((a) => a.id === agentId);
 		if (!agentConfig) {
 			yield { type: "error", sessionKey, message: `Agent "${agentId}" not found` };
+			return;
+		}
+
+		// Claude Code runtime: delegate to Agent SDK
+		if (agentConfig.runtime === "claude-code") {
+			const workspaceDir =
+				agentConfig.workspaceDir ?? join(resolveDataDir(), "workspace", agentId);
+			await mkdir(workspaceDir, { recursive: true });
+			this.sessionStore.ensureSession({ key: sessionKey, agentId });
+
+			const cc = agentConfig.claudeCode;
+			yield* runClaudeCode({
+				prompt: message,
+				sessionKey,
+				cwd: workspaceDir,
+				allowedTools: cc?.allowedTools,
+				permissionMode: cc?.permissionMode,
+				maxTurns: cc?.maxTurns,
+				mcpServers: cc?.mcpServers as Record<string, unknown> | undefined,
+				systemPrompt:
+					agentConfig.systemPrompt !== "You are a helpful assistant."
+						? agentConfig.systemPrompt
+						: undefined,
+				signal,
+			});
 			return;
 		}
 
