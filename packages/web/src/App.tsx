@@ -1,4 +1,15 @@
-import { Menu, X } from "lucide-react";
+import {
+	Bot,
+	Clock,
+	History,
+	Menu,
+	MessageSquare,
+	PanelLeftClose,
+	PanelLeftOpen,
+	Radio,
+	Settings as SettingsIcon,
+	X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
 	BrowserRouter,
@@ -11,6 +22,7 @@ import {
 } from "react-router-dom";
 import { Toaster } from "sonner";
 import { ThemeToggle } from "./components/theme-toggle";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { API_BASE, apiFetch } from "./lib/api";
 import { isTauri, startGateway } from "./lib/tauri";
 import { Agents } from "./pages/Agents";
@@ -67,20 +79,28 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 }
 
 const NAV_ITEMS = [
-	{ to: "/", label: "Chat" },
-	{ to: "/channels", label: "Channels" },
-	{ to: "/sessions", label: "Sessions" },
-	{ to: "/cron", label: "Cron" },
-	{ to: "/agents", label: "Agents" },
-	{ to: "/settings", label: "Settings" },
+	{ to: "/", label: "聊天", icon: MessageSquare },
+	{ to: "/sessions", label: "会话", icon: History },
+	{ to: "/agents", label: "Agent", icon: Bot },
+	{ to: "/channels", label: "频道", icon: Radio },
+	{ to: "/cron", label: "定时任务", icon: Clock },
+	{ to: "/settings", label: "设置", icon: SettingsIcon },
 ];
-
-const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-	`px-3 py-2 rounded-lg transition-colors ${isActive ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`;
 
 function AppLayout() {
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const { pathname } = useLocation();
+
+	const [collapsed, setCollapsed] = useState(() => {
+		return localStorage.getItem("yanclaw_sidebar_collapsed") === "true";
+	});
+
+	const toggleCollapsed = () => {
+		setCollapsed((prev) => {
+			localStorage.setItem("yanclaw_sidebar_collapsed", String(!prev));
+			return !prev;
+		});
+	};
 
 	// Close drawer on navigation — pathname is the trigger
 	const prevPathRef = useRef(pathname);
@@ -92,17 +112,70 @@ function AppLayout() {
 	return (
 		<div className="flex h-screen bg-background text-foreground">
 			{/* Desktop sidebar — hidden on mobile */}
-			<nav className="hidden md:flex w-56 border-r border-border p-4 flex-col gap-2">
-				<h1 className="text-xl font-bold mb-4">YanClaw</h1>
-				{NAV_ITEMS.map((item) => (
-					<NavLink key={item.to} to={item.to} end={item.to === "/"} className={navLinkClass}>
-						{item.label}
-					</NavLink>
-				))}
-				<div className="mt-auto pt-2 border-t border-border">
-					<ThemeToggle />
-				</div>
-			</nav>
+			<TooltipProvider delayDuration={0}>
+				<nav
+					className={`hidden md:flex flex-col gap-1 border-r border-border p-3 transition-[width] duration-200 ease-out ${
+						collapsed ? "w-14" : "w-56"
+					}`}
+				>
+					{!collapsed && <h1 className="text-lg font-bold mb-3 px-2">YanClaw</h1>}
+
+					{NAV_ITEMS.map((item) => {
+						const Icon = item.icon;
+						return collapsed ? (
+							<Tooltip key={item.to}>
+								<TooltipTrigger asChild>
+									<NavLink
+										to={item.to}
+										end={item.to === "/"}
+										className={({ isActive }) =>
+											`flex items-center justify-center p-2 rounded-xl transition-colors relative ${
+												isActive
+													? "bg-accent text-accent-foreground before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-[3px] before:h-5 before:bg-primary before:rounded-r"
+													: "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+											}`
+										}
+									>
+										<Icon className="h-5 w-5" />
+									</NavLink>
+								</TooltipTrigger>
+								<TooltipContent side="right">{item.label}</TooltipContent>
+							</Tooltip>
+						) : (
+							<NavLink
+								key={item.to}
+								to={item.to}
+								end={item.to === "/"}
+								className={({ isActive }) =>
+									`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors relative ${
+										isActive
+											? "bg-accent text-accent-foreground before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-[3px] before:h-5 before:bg-primary before:rounded-r"
+											: "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+									}`
+								}
+							>
+								<Icon className="h-5 w-5" />
+								<span>{item.label}</span>
+							</NavLink>
+						);
+					})}
+
+					<div className="mt-auto pt-2 border-t border-border flex flex-col gap-1">
+						{!collapsed && <ThemeToggle />}
+						<button
+							type="button"
+							onClick={toggleCollapsed}
+							className="flex items-center justify-center p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+						>
+							{collapsed ? (
+								<PanelLeftOpen className="h-5 w-5" />
+							) : (
+								<PanelLeftClose className="h-5 w-5" />
+							)}
+						</button>
+					</div>
+				</nav>
+			</TooltipProvider>
 
 			{/* Mobile drawer overlay */}
 			{drawerOpen && (
@@ -130,11 +203,26 @@ function AppLayout() {
 						<X className="h-5 w-5" />
 					</button>
 				</div>
-				{NAV_ITEMS.map((item) => (
-					<NavLink key={item.to} to={item.to} end={item.to === "/"} className={navLinkClass}>
-						{item.label}
-					</NavLink>
-				))}
+				{NAV_ITEMS.map((item) => {
+					const Icon = item.icon;
+					return (
+						<NavLink
+							key={item.to}
+							to={item.to}
+							end={item.to === "/"}
+							className={({ isActive }) =>
+								`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+									isActive
+										? "bg-accent text-accent-foreground"
+										: "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+								}`
+							}
+						>
+							<Icon className="h-5 w-5" />
+							<span>{item.label}</span>
+						</NavLink>
+					);
+				})}
 				<div className="mt-auto pt-2 border-t border-border">
 					<ThemeToggle />
 				</div>
