@@ -167,11 +167,13 @@ const toolsSchema = z
 	})
 	.default({});
 
+export const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
+
 const defaultAgent = {
 	id: "main",
 	name: "默认助手",
 	model: "claude-sonnet-4-20250514",
-	systemPrompt: "You are a helpful assistant.",
+	systemPrompt: DEFAULT_SYSTEM_PROMPT,
 };
 
 // --- Main Config Schema ---

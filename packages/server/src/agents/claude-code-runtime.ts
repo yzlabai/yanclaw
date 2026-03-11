@@ -106,15 +106,27 @@ export interface ClaudeCodeParams {
 	signal?: AbortSignal;
 }
 
+/** Metadata returned after a Claude Code run completes. */
+export interface ClaudeCodeResult {
+	sessionId?: string;
+	resultText?: string;
+}
+
 /**
  * Async generator that wraps the Claude Agent SDK `query()`,
  * yielding AgentEvents compatible with YanClaw's agent runtime.
+ *
+ * After iteration completes, call `.next()` one final time — the return
+ * value contains `ClaudeCodeResult` with session ID and result text.
  */
-export async function* runClaudeCode(params: ClaudeCodeParams): AsyncGenerator<AgentEvent> {
+export async function* runClaudeCode(
+	params: ClaudeCodeParams,
+): AsyncGenerator<AgentEvent, ClaudeCodeResult> {
 	const { prompt, sessionKey, signal } = params;
 
-	let _sessionId: string | undefined;
+	let sessionId: string | undefined;
 	let finalResult: string | undefined;
+	let usage = { promptTokens: 0, completionTokens: 0 };
 
 	try {
 		const options: Record<string, unknown> = {
@@ -144,25 +156,29 @@ export async function* runClaudeCode(params: ClaudeCodeParams): AsyncGenerator<A
 		const stream = query({ prompt, options });
 
 		for await (const msg of stream) {
-			// Check abort signal
 			if (signal?.aborted) {
 				yield { type: "aborted", sessionKey, partial: finalResult ?? "" };
-				return;
+				return { sessionId, resultText: finalResult };
 			}
 
 			const sdkMsg = msg as SdkMessage;
 
 			// Capture session ID from init
 			if (sdkMsg.type === "system" && sdkMsg.subtype === "init" && sdkMsg.session_id) {
-				_sessionId = sdkMsg.session_id;
+				sessionId = sdkMsg.session_id;
 			}
 
-			// Capture final result
+			// Capture final result + usage
 			if (sdkMsg.result !== undefined) {
 				finalResult = sdkMsg.result;
+				if (sdkMsg.usage) {
+					usage = {
+						promptTokens: Number(sdkMsg.usage.input_tokens ?? 0),
+						completionTokens: Number(sdkMsg.usage.output_tokens ?? 0),
+					};
+				}
 			}
 
-			// Yield mapped events
 			const events = mapToAgentEvent(sdkMsg, sessionKey);
 			for (const event of events) {
 				yield event;
@@ -174,15 +190,11 @@ export async function* runClaudeCode(params: ClaudeCodeParams): AsyncGenerator<A
 			yield { type: "delta", sessionKey, text: finalResult };
 		}
 
-		yield {
-			type: "done",
-			sessionKey,
-			usage: { promptTokens: 0, completionTokens: 0 },
-		};
+		yield { type: "done", sessionKey, usage };
 	} catch (err) {
 		if (signal?.aborted) {
 			yield { type: "aborted", sessionKey, partial: finalResult ?? "" };
-			return;
+			return { sessionId, resultText: finalResult };
 		}
 
 		yield {
@@ -191,4 +203,6 @@ export async function* runClaudeCode(params: ClaudeCodeParams): AsyncGenerator<A
 			message: err instanceof Error ? err.message : String(err),
 		};
 	}
+
+	return { sessionId, resultText: finalResult };
 }

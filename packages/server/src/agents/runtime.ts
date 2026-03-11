@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { type CoreMessage, generateText, type LanguageModel, streamText } from "ai";
 import type { ApprovalManager } from "../approvals";
-import type { Config, Preference } from "../config/schema";
+import { type Config, DEFAULT_SYSTEM_PROMPT, type Preference } from "../config/schema";
 import { resolveDataDir } from "../config/store";
 import { MemoryStore } from "../db/memories";
 import { SessionStore } from "../db/sessions";
@@ -36,6 +36,8 @@ export class AgentRuntime {
 	private approvalManager?: ApprovalManager;
 	private mediaStore?: MediaStore;
 	private leakDetector?: LeakDetector;
+	/** Maps YanClaw sessionKey → Agent SDK session ID (for resume). */
+	private sdkSessionIds = new Map<string, string>();
 
 	constructor(
 		modelManager?: ModelManager,
@@ -112,8 +114,11 @@ export class AgentRuntime {
 			await mkdir(workspaceDir, { recursive: true });
 			this.sessionStore.ensureSession({ key: sessionKey, agentId });
 
+			// Load existing SDK session ID for resume
+			const sdkSessionId = this.sdkSessionIds.get(sessionKey);
+
 			const cc = agentConfig.claudeCode;
-			yield* runClaudeCode({
+			const gen = runClaudeCode({
 				prompt: message,
 				sessionKey,
 				cwd: workspaceDir,
@@ -122,11 +127,31 @@ export class AgentRuntime {
 				maxTurns: cc?.maxTurns,
 				mcpServers: cc?.mcpServers as Record<string, unknown> | undefined,
 				systemPrompt:
-					agentConfig.systemPrompt !== "You are a helpful assistant."
-						? agentConfig.systemPrompt
-						: undefined,
+					agentConfig.systemPrompt !== DEFAULT_SYSTEM_PROMPT ? agentConfig.systemPrompt : undefined,
+				resume: sdkSessionId,
 				signal,
 			});
+
+			// Drain the generator, yielding events to the caller
+			let step = await gen.next();
+			while (!step.done) {
+				yield step.value;
+				step = await gen.next();
+			}
+
+			// Persist session: save messages + SDK session ID for resume
+			const result = step.value;
+			if (result?.sessionId) {
+				this.sdkSessionIds.set(sessionKey, result.sessionId);
+			}
+			this.sessionStore.saveMessages(sessionKey, [
+				{ role: "user", content: message },
+				{
+					role: "assistant",
+					content: result?.resultText ?? null,
+					model: "claude-code",
+				},
+			]);
 			return;
 		}
 
