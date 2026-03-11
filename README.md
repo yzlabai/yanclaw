@@ -6,7 +6,9 @@
 
 <a id="english"></a>
 
-A local-first, multi-channel AI assistant desktop app. Run a gateway server locally, chat with multiple AI models through a unified interface, and connect AI to Telegram / Discord / Slack for a cross-platform intelligent assistant experience.
+A local-first, multi-channel AI assistant gateway — inspired by [OpenClaw](https://github.com/nicepkg/openclaw), rebuilt from scratch with a modern stack.
+
+OpenClaw pioneered the local AI gateway concept with 23+ channel integrations, but is macOS-only (SwiftUI), tied to Node.js + Express, and uses a custom AI runtime. YanClaw takes the same core idea and re-implements it with **Bun + Hono + Tauri v2**: end-to-end type-safe API (Hono RPC), ~10MB cross-platform desktop binary (vs ~150MB Electron), standardized AI runtime (Vercel AI SDK), and built-in SQLite with zero native deps. The result is a lighter, faster, fully cross-platform alternative that runs on Windows, macOS, and Linux out of the box.
 
 ## Architecture
 
@@ -41,6 +43,19 @@ A local-first, multi-channel AI assistant desktop app. Run a gateway server loca
 - **Frontend**: React 19 + Vite 6 + Tailwind CSS 4 + prompt-kit + Hono RPC type-safe client
 - **Desktop**: Tauri v2 (Rust core, ~10MB binary)
 - **Quality**: Biome (lint + format) + Vitest (tests) + TypeScript strict
+
+### vs OpenClaw
+
+| | OpenClaw | YanClaw |
+|---|---|---|
+| Runtime | Node.js 22 | Bun |
+| Desktop | SwiftUI (macOS only) | Tauri v2 (Windows/macOS/Linux) |
+| HTTP | Express + ws | Hono (type-safe RPC) |
+| AI SDK | Custom Pi runtime | Vercel AI SDK |
+| Frontend | Vite + TS | React 19 + Tailwind CSS 4 |
+| Database | better-sqlite3 + sqlite-vec | bun:sqlite + FTS5 |
+| Binary size | ~150MB (Electron) | ~10MB (Tauri) |
+| Package manager | pnpm | Bun |
 
 ## Features
 
@@ -104,7 +119,9 @@ bun run format       # Biome auto-format
 
 <a id="中文"></a>
 
-本地优先的多通道 AI 助手桌面应用。在本机运行 Gateway 服务，通过统一界面与多个 AI 模型对话，并可将 AI 接入 Telegram / Discord / Slack 等消息通道，实现跨平台的智能助手体验。
+本地优先的多通道 AI 助手网关 —— 受 [OpenClaw](https://github.com/nicepkg/openclaw) 启发，使用现代技术栈从零重写。
+
+OpenClaw 开创了本地 AI 网关的概念，支持 23+ 消息通道集成，但仅限 macOS (SwiftUI)，绑定 Node.js + Express，使用自研 AI 运行时。YanClaw 保留了相同的核心理念，用 **Bun + Hono + Tauri v2** 重新实现：端到端类型安全 API (Hono RPC)、~10MB 跨平台桌面包（对比 Electron 的 ~150MB）、标准化 AI 运行时 (Vercel AI SDK)、内置 SQLite 零原生依赖。最终产出一个更轻量、更快速、开箱即用的全平台替代方案，支持 Windows / macOS / Linux。
 
 ## 架构
 
@@ -139,6 +156,19 @@ bun run format       # Biome auto-format
 - **前端**：React 19 + Vite 6 + Tailwind CSS 4 + prompt-kit + Hono RPC 类型安全客户端
 - **桌面**：Tauri v2（Rust 内核，~10MB 体积）
 - **代码质量**：Biome（lint + format）+ Vitest（测试）+ TypeScript strict
+
+### 对比 OpenClaw
+
+| | OpenClaw | YanClaw |
+|---|---|---|
+| 运行时 | Node.js 22 | Bun |
+| 桌面框架 | SwiftUI（仅 macOS） | Tauri v2（Windows/macOS/Linux） |
+| HTTP | Express + ws | Hono（类型安全 RPC） |
+| AI SDK | 自研 Pi runtime | Vercel AI SDK |
+| 前端 | Vite + TS | React 19 + Tailwind CSS 4 |
+| 数据库 | better-sqlite3 + sqlite-vec | bun:sqlite + FTS5 |
+| 包体积 | ~150MB（Electron） | ~10MB（Tauri） |
+| 包管理 | pnpm | Bun |
 
 ## 功能特性
 
