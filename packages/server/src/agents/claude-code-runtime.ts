@@ -103,6 +103,7 @@ export interface ClaudeCodeParams {
 	resume?: string;
 	systemPrompt?: string;
 	mcpServers?: Record<string, unknown>;
+	agents?: Record<string, unknown>;
 	signal?: AbortSignal;
 }
 
@@ -151,6 +152,9 @@ export async function* runClaudeCode(
 		}
 		if (params.mcpServers) {
 			options.mcpServers = params.mcpServers;
+		}
+		if (params.agents && Object.keys(params.agents).length > 0) {
+			options.agents = params.agents;
 		}
 
 		const stream = query({ prompt, options });

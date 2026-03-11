@@ -126,6 +126,7 @@ export class AgentRuntime {
 				permissionMode: cc?.permissionMode,
 				maxTurns: cc?.maxTurns,
 				mcpServers: cc?.mcpServers as Record<string, unknown> | undefined,
+				agents: cc?.agents as Record<string, unknown> | undefined,
 				systemPrompt:
 					agentConfig.systemPrompt !== DEFAULT_SYSTEM_PROMPT ? agentConfig.systemPrompt : undefined,
 				resume: sdkSessionId,

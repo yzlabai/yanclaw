@@ -75,6 +75,15 @@ const agentSchema = z.object({
 				.default("acceptEdits"),
 			maxTurns: z.number().default(50),
 			mcpServers: z.record(z.unknown()).default({}),
+			agents: z
+				.record(
+					z.object({
+						description: z.string(),
+						prompt: z.string().optional(),
+						tools: z.array(z.string()).optional(),
+					}),
+				)
+				.default({}),
 		})
 		.optional(),
 });
