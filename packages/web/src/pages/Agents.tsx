@@ -6,6 +6,8 @@ interface AgentData {
 	name: string;
 	model: string;
 	systemPrompt: string;
+	runtime: "default" | "claude-code";
+	workspaceDir?: string;
 }
 
 const MODEL_OPTIONS = [
@@ -59,6 +61,7 @@ export function Agents() {
 			name: "",
 			model: "claude-sonnet-4-20250514",
 			systemPrompt: "You are a helpful assistant.",
+			runtime: "default",
 		});
 	};
 
@@ -140,7 +143,14 @@ export function Agents() {
 									{agent.id}
 								</span>
 							</div>
-							<div className="text-sm text-muted-foreground mt-1">{agent.model}</div>
+							<div className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+								{agent.model}
+								{agent.runtime === "claude-code" && (
+									<span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
+										Claude Code
+									</span>
+								)}
+							</div>
 							<div className="text-xs text-muted-foreground mt-1 truncate">
 								{agent.systemPrompt}
 							</div>
@@ -197,24 +207,61 @@ export function Agents() {
 									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary"
 								/>
 							</div>
+							{editing.runtime !== "claude-code" && (
+								<div>
+									<label className="block text-sm text-muted-foreground mb-1">Model</label>
+									<select
+										value={editing.model}
+										onChange={(e) => setEditing({ ...editing, model: e.target.value })}
+										className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-primary"
+									>
+										{MODEL_OPTIONS.map((g) => (
+											<optgroup key={g.group} label={g.group}>
+												{g.models.map((m) => (
+													<option key={m.value} value={m.value}>
+														{m.label}
+													</option>
+												))}
+											</optgroup>
+										))}
+									</select>
+								</div>
+							)}
 							<div>
-								<label className="block text-sm text-muted-foreground mb-1">Model</label>
+								<label className="block text-sm text-muted-foreground mb-1">Runtime</label>
 								<select
-									value={editing.model}
-									onChange={(e) => setEditing({ ...editing, model: e.target.value })}
+									value={editing.runtime}
+									onChange={(e) =>
+										setEditing({
+											...editing,
+											runtime: e.target.value as "default" | "claude-code",
+										})
+									}
 									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-primary"
 								>
-									{MODEL_OPTIONS.map((g) => (
-										<optgroup key={g.group} label={g.group}>
-											{g.models.map((m) => (
-												<option key={m.value} value={m.value}>
-													{m.label}
-												</option>
-											))}
-										</optgroup>
-									))}
+									<option value="default">Default (Vercel AI SDK)</option>
+									<option value="claude-code">Claude Code (Agent SDK)</option>
 								</select>
 							</div>
+							{editing.runtime === "claude-code" && (
+								<div>
+									<label className="block text-sm text-muted-foreground mb-1">
+										Workspace Directory
+									</label>
+									<input
+										type="text"
+										value={editing.workspaceDir ?? ""}
+										onChange={(e) =>
+											setEditing({
+												...editing,
+												workspaceDir: e.target.value || undefined,
+											})
+										}
+										placeholder="/path/to/project"
+										className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary"
+									/>
+								</div>
+							)}
 							<div>
 								<label className="block text-sm text-muted-foreground mb-1">System Prompt</label>
 								<textarea

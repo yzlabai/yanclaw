@@ -8,12 +8,16 @@ const createAgentSchema = z.object({
 	name: z.string().min(1),
 	model: z.string().default("claude-sonnet-4-20250514"),
 	systemPrompt: z.string().default("You are a helpful assistant."),
+	runtime: z.enum(["default", "claude-code"]).default("default"),
+	workspaceDir: z.string().optional(),
 });
 
 const updateAgentSchema = z.object({
 	name: z.string().optional(),
 	model: z.string().optional(),
 	systemPrompt: z.string().optional(),
+	runtime: z.enum(["default", "claude-code"]).optional(),
+	workspaceDir: z.string().optional(),
 });
 
 export const agentsRoute = new Hono()
@@ -25,6 +29,8 @@ export const agentsRoute = new Hono()
 				name: a.name,
 				model: a.model,
 				systemPrompt: a.systemPrompt,
+				runtime: a.runtime,
+				workspaceDir: a.workspaceDir,
 			})),
 		);
 	})
