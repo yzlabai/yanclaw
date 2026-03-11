@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SYSTEM_PROMPT, configSchema } from "../config/schema";
+import { configSchema, DEFAULT_SYSTEM_PROMPT } from "../config/schema";
 
 describe("agent config — claude-code runtime", () => {
 	it("defaults runtime to 'default'", () => {

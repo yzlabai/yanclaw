@@ -9,6 +9,7 @@ import {
 	Routes,
 	useLocation,
 } from "react-router-dom";
+import { Toaster } from "sonner";
 import { ThemeToggle } from "./components/theme-toggle";
 import { API_BASE, apiFetch } from "./lib/api";
 import { isTauri, startGateway } from "./lib/tauri";
@@ -176,6 +177,7 @@ export function App() {
 			<SetupGuard>
 				<AppLayout />
 			</SetupGuard>
+			<Toaster position="bottom-right" />
 		</Router>
 	);
 }
