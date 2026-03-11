@@ -1,8 +1,17 @@
 import { Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import {
+	BrowserRouter,
+	HashRouter,
+	Navigate,
+	NavLink,
+	Route,
+	Routes,
+	useLocation,
+} from "react-router-dom";
 import { ThemeToggle } from "./components/theme-toggle";
 import { API_BASE, apiFetch } from "./lib/api";
+import { isTauri, startGateway } from "./lib/tauri";
 import { Agents } from "./pages/Agents";
 import { Channels } from "./pages/Channels";
 import { Chat } from "./pages/Chat";
@@ -16,10 +25,31 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 	const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
 
 	useEffect(() => {
-		apiFetch(`${API_BASE}/api/system/setup`)
-			.then((r) => r.json())
-			.then((data: { needsSetup: boolean }) => setNeedsSetup(data.needsSetup))
-			.catch(() => setNeedsSetup(false));
+		const init = async () => {
+			// Auto-start gateway server in Tauri mode
+			if (isTauri()) {
+				try {
+					await startGateway();
+				} catch {
+					// Gateway may already be running
+				}
+				// Wait for server to be ready
+				for (let i = 0; i < 20; i++) {
+					try {
+						const r = await fetch(`${API_BASE}/api/system/setup`);
+						if (r.ok) break;
+					} catch {
+						// not ready yet
+					}
+					await new Promise((r) => setTimeout(r, 500));
+				}
+			}
+			apiFetch(`${API_BASE}/api/system/setup`)
+				.then((r) => r.json())
+				.then((data: { needsSetup: boolean }) => setNeedsSetup(data.needsSetup))
+				.catch(() => setNeedsSetup(false));
+		};
+		init();
 	}, []);
 
 	if (needsSetup === null) return null; // loading
@@ -140,11 +170,12 @@ function AppLayout() {
 }
 
 export function App() {
+	const Router = isTauri() ? HashRouter : BrowserRouter;
 	return (
-		<BrowserRouter>
+		<Router>
 			<SetupGuard>
 				<AppLayout />
 			</SetupGuard>
-		</BrowserRouter>
+		</Router>
 	);
 }

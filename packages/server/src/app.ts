@@ -20,7 +20,17 @@ import { wsRoute } from "./routes/ws";
 
 const app = new Hono()
 	.use("*", logger())
-	.use("/api/*", cors({ origin: ["http://localhost:1420", "http://localhost:5173"] }))
+	.use(
+		"/api/*",
+		cors({
+			origin: [
+				"http://localhost:1420",
+				"http://localhost:5173",
+				"http://tauri.localhost",
+				"https://tauri.localhost",
+			],
+		}),
+	)
 	.use("/api/*", authMiddleware)
 	.use("/api/*", rateLimiter({ windowMs: 60_000, max: 60 }))
 	.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10 }))

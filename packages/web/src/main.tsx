@@ -10,9 +10,9 @@ createRoot(document.getElementById("root")!).render(
 	</StrictMode>,
 );
 
-// Register service worker for PWA
-if ("serviceWorker" in navigator) {
+// Register service worker for PWA (skip in Tauri — desktop app doesn't need SW)
+if ("serviceWorker" in navigator && !("__TAURI_INTERNALS__" in window)) {
 	window.addEventListener("load", () => {
-		navigator.serviceWorker.register("/sw.js").catch(() => {});
+		navigator.serviceWorker.register("./sw.js").catch(() => {});
 	});
 }
