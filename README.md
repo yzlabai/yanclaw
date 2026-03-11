@@ -8,7 +8,7 @@
 
 A lightweight, security-first, multi-channel AI assistant gateway — inspired by [OpenClaw](https://github.com/nicepkg/openclaw), rebuilt from scratch with a modern stack.
 
-OpenClaw pioneered the local AI gateway concept with 23+ channel integrations and native clients (SwiftUI for macOS, Kotlin for Android), but relies on Node.js + Express, a custom AI runtime, and platform-specific native code for each OS. YanClaw takes the same core idea and re-implements it with **Bun + Hono + Tauri v2**, focusing on two things: **lightweight** (~10MB binary, one codebase for all platforms, zero native deps) and **security** (AES-256 credential vault, credential leak detection, prompt injection defense, execution approval, Docker sandbox, audit logging, SSRF prevention, and rate limiting — all built in, not bolted on).
+OpenClaw pioneered the local AI gateway concept with 23+ channel integrations and native clients (SwiftUI for macOS, Kotlin for Android), but relies on Node.js + Express, a custom AI runtime, and platform-specific native code for each OS. YanClaw takes the same core idea and re-implements it with **Bun + Hono + Tauri v2**, focusing on three things: **lightweight** (~10MB binary, one codebase for all platforms, zero native deps), **security** (AES-256 credential vault, credential leak detection, prompt injection defense, execution approval, Docker sandbox, audit logging, SSRF prevention, and rate limiting — all built in, not bolted on), and **hackable** (clean monorepo, end-to-end type-safe API via Hono RPC, Zod-validated routes, plugin system with lifecycle hooks — easy to add new channels, tools, or agents without touching core code).
 
 ## Architecture
 
@@ -121,7 +121,7 @@ bun run format       # Biome auto-format
 
 轻量、安全的多通道 AI 助手网关 —— 受 [OpenClaw](https://github.com/nicepkg/openclaw) 启发，使用现代技术栈从零重写。
 
-OpenClaw 开创了本地 AI 网关的概念，支持 23+ 消息通道集成，提供 macOS (SwiftUI) 和 Android (Kotlin) 原生客户端，但依赖 Node.js + Express、自研 AI 运行时，且每个平台需要独立的原生代码。YanClaw 保留相同的核心理念，用 **Bun + Hono + Tauri v2** 重新实现，主打两点：**轻量**（~10MB 安装包、一套代码全平台、零原生依赖）和**安全**（AES-256 凭证加密、凭证泄漏检测、提示注入防御、执行审批、Docker 沙箱、审计日志、SSRF 防护、速率限制——全部内置，不是事后补丁）。
+OpenClaw 开创了本地 AI 网关的概念，支持 23+ 消息通道集成，提供 macOS (SwiftUI) 和 Android (Kotlin) 原生客户端，但依赖 Node.js + Express、自研 AI 运行时，且每个平台需要独立的原生代码。YanClaw 保留相同的核心理念，用 **Bun + Hono + Tauri v2** 重新实现，主打三点：**轻量**（~10MB 安装包、一套代码全平台、零原生依赖）、**安全**（AES-256 凭证加密、凭证泄漏检测、提示注入防御、执行审批、Docker 沙箱、审计日志、SSRF 防护、速率限制——全部内置，不是事后补丁）、**易于二开**（清晰的 monorepo 结构、Hono RPC 端到端类型安全、Zod 校验路由、插件系统带生命周期钩子——新增通道、工具或 Agent 不需要改动核心代码）。
 
 ## 架构
 
