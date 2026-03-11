@@ -9,6 +9,7 @@ import {
 import { createDockerShellTool } from "./docker-shell";
 import { createFileEditTool, createFileReadTool, createFileWriteTool } from "./file";
 import { createMemoryDeleteTool, createMemorySearchTool, createMemoryStoreTool } from "./memory";
+import { createDesktopScreenshotTool } from "./screenshot";
 import { createShellTool } from "./shell";
 import { createWebFetchTool, createWebSearchTool } from "./web";
 
@@ -20,6 +21,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
 	"group:web": ["web_search", "web_fetch"],
 	"group:browser": ["browser_navigate", "browser_screenshot", "browser_action"],
 	"group:memory": ["memory_store", "memory_search", "memory_delete"],
+	"group:desktop": ["screenshot_desktop"],
 };
 
 const OWNER_ONLY_TOOLS = new Set([
@@ -29,6 +31,7 @@ const OWNER_ONLY_TOOLS = new Set([
 	"browser_navigate",
 	"browser_screenshot",
 	"browser_action",
+	"screenshot_desktop",
 ]);
 
 function expandGroups(names: string[]): string[] {
@@ -57,6 +60,7 @@ const TOOL_CAPABILITIES: Record<string, string[]> = {
 	memory_store: ["memory:write"],
 	memory_search: ["memory:read"],
 	memory_delete: ["memory:write"],
+	screenshot_desktop: ["desktop:capture"],
 };
 
 /** Predefined capability presets. */
@@ -179,6 +183,7 @@ export function createToolset(opts: {
 		browser_navigate: createBrowserNavigateTool({ maxOutput }),
 		browser_screenshot: createBrowserScreenshotTool(),
 		browser_action: createBrowserActionTool(),
+		screenshot_desktop: createDesktopScreenshotTool(),
 	};
 
 	// Add memory tools if memory store is available
