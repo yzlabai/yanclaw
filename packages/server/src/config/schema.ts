@@ -69,9 +69,7 @@ const agentSchema = z.object({
 	runtime: z.enum(["default", "claude-code"]).default("default"),
 	claudeCode: z
 		.object({
-			allowedTools: z
-				.array(z.string())
-				.default(["Read", "Edit", "Write", "Bash", "Glob", "Grep"]),
+			allowedTools: z.array(z.string()).default(["Read", "Edit", "Write", "Bash", "Glob", "Grep"]),
 			permissionMode: z
 				.enum(["default", "acceptEdits", "bypassPermissions"])
 				.default("acceptEdits"),

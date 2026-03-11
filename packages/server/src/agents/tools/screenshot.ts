@@ -39,8 +39,16 @@ export function createDesktopScreenshotTool() {
 				.optional()
 				.default("fullscreen")
 				.describe("Capture mode: fullscreen (entire display) or region (specific rectangle)"),
-			x: z.number().int().optional().describe("Region left edge in pixels (required for region mode)"),
-			y: z.number().int().optional().describe("Region top edge in pixels (required for region mode)"),
+			x: z
+				.number()
+				.int()
+				.optional()
+				.describe("Region left edge in pixels (required for region mode)"),
+			y: z
+				.number()
+				.int()
+				.optional()
+				.describe("Region top edge in pixels (required for region mode)"),
 			width: z
 				.number()
 				.int()
@@ -64,9 +72,7 @@ export function createDesktopScreenshotTool() {
 			const tmpPath = join(tmpdir(), `yanclaw-screenshot-${Date.now()}.png`);
 			try {
 				const args =
-					mode === "region"
-						? ["-x", `-R${x},${y},${width},${height}`, tmpPath]
-						: ["-x", tmpPath];
+					mode === "region" ? ["-x", `-R${x},${y},${width},${height}`, tmpPath] : ["-x", tmpPath];
 
 				const { exitCode, stderr } = await runCommand("screencapture", args);
 				if (exitCode !== 0) {

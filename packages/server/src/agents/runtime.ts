@@ -108,8 +108,7 @@ export class AgentRuntime {
 
 		// Claude Code runtime: delegate to Agent SDK
 		if (agentConfig.runtime === "claude-code") {
-			const workspaceDir =
-				agentConfig.workspaceDir ?? join(resolveDataDir(), "workspace", agentId);
+			const workspaceDir = agentConfig.workspaceDir ?? join(resolveDataDir(), "workspace", agentId);
 			await mkdir(workspaceDir, { recursive: true });
 			this.sessionStore.ensureSession({ key: sessionKey, agentId });
 

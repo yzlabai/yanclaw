@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createDesktopScreenshotTool } from "./screenshot";
 
 describe("createDesktopScreenshotTool", () => {
@@ -47,10 +47,7 @@ describe("createDesktopScreenshotTool", () => {
 
 	it("returns error when region mode is missing coordinates", async () => {
 		const tool = createDesktopScreenshotTool();
-		const result = await tool.execute(
-			{ mode: "region" },
-			{ toolCallId: "t1", messages: [] },
-		);
+		const result = await tool.execute({ mode: "region" }, { toolCallId: "t1", messages: [] });
 		expect(result).toMatch(/Error:.*region mode requires/);
 	});
 
@@ -67,28 +64,23 @@ describe("createDesktopScreenshotTool", () => {
 // Integration tests require macOS with a real display (screencapture fails in headless environments).
 // Run manually: ENABLE_SCREENSHOT_INTEGRATION=1 vitest run screenshot.test.ts
 describe("createDesktopScreenshotTool — integration (requires macOS screencapture)", () => {
-	const shouldRun = process.platform === "darwin" && process.env.ENABLE_SCREENSHOT_INTEGRATION === "1";
+	const shouldRun =
+		process.platform === "darwin" && process.env.ENABLE_SCREENSHOT_INTEGRATION === "1";
 
-	it.skipIf(!shouldRun)(
-		"captures a fullscreen screenshot and returns a data URL",
-		async () => {
-			const tool = createDesktopScreenshotTool();
-			const result = await tool.execute({ mode: "fullscreen" }, { toolCallId: "t1", messages: [] });
-			expect(typeof result).toBe("string");
-			expect(result as string).toMatch(/^data:image\/png;base64,/);
-		},
-	);
+	it.skipIf(!shouldRun)("captures a fullscreen screenshot and returns a data URL", async () => {
+		const tool = createDesktopScreenshotTool();
+		const result = await tool.execute({ mode: "fullscreen" }, { toolCallId: "t1", messages: [] });
+		expect(typeof result).toBe("string");
+		expect(result as string).toMatch(/^data:image\/png;base64,/);
+	});
 
-	it.skipIf(!shouldRun)(
-		"captures a region screenshot and returns a data URL",
-		async () => {
-			const tool = createDesktopScreenshotTool();
-			const result = await tool.execute(
-				{ mode: "region", x: 0, y: 0, width: 100, height: 100 },
-				{ toolCallId: "t1", messages: [] },
-			);
-			expect(typeof result).toBe("string");
-			expect(result as string).toMatch(/^data:image\/png;base64,/);
-		},
-	);
+	it.skipIf(!shouldRun)("captures a region screenshot and returns a data URL", async () => {
+		const tool = createDesktopScreenshotTool();
+		const result = await tool.execute(
+			{ mode: "region", x: 0, y: 0, width: 100, height: 100 },
+			{ toolCallId: "t1", messages: [] },
+		);
+		expect(typeof result).toBe("string");
+		expect(result as string).toMatch(/^data:image\/png;base64,/);
+	});
 });
