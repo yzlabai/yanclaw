@@ -55,6 +55,8 @@ A local-first, multi-channel AI assistant desktop app. Run a gateway server loca
 - Bearer token authentication
 - Media pipeline: upload, thumbnails, format conversion, PDF text extraction
 - Session export (JSON/Markdown), auto-cleanup
+- Background running: close window to tray, gateway keeps running (Ollama-style)
+- CLI management: `yanclaw start/stop/restart/status`
 - Auto-updater via GitHub Releases
 
 ## Quick Start
@@ -71,6 +73,15 @@ bun run dev:server   # Backend (http://localhost:18789)
 bun run dev:tauri
 ```
 
+## CLI
+
+```bash
+bun run yanclaw status    # Show running status
+bun run yanclaw start     # Start gateway (daemon)
+bun run yanclaw stop      # Graceful stop
+bun run yanclaw restart   # Restart gateway
+```
+
 ## Other Commands
 
 ```bash
@@ -84,8 +95,10 @@ bun run format       # Biome auto-format
 
 - [Design](docs/DESIGN.md)
 - [Features](docs/FEATURES.md)
-- [Changelog](docs/CHANGELOG.md)
+- [API](docs/API.md)
 - [Database](docs/DATABASE.md)
+- [Security Guide](docs/security-guide.md)
+- [Changelog](docs/CHANGELOG.md)
 
 ---
 
@@ -140,6 +153,8 @@ bun run format       # Biome auto-format
 - Bearer Token 认证
 - 媒体管道：上传、缩略图、格式转换、PDF 文本提取
 - 会话导出（JSON/Markdown）、自动清理
+- 后台运行：关窗隐藏到托盘，Gateway 持续运行（Ollama 风格）
+- CLI 管理工具：`yanclaw start/stop/restart/status`
 - 自动更新（GitHub Releases）
 
 ## 快速开始
@@ -156,6 +171,15 @@ bun run dev:server   # 后端 (http://localhost:18789)
 bun run dev:tauri
 ```
 
+## CLI
+
+```bash
+bun run yanclaw status    # 查看运行状态
+bun run yanclaw start     # 后台启动 Gateway
+bun run yanclaw stop      # 优雅停止
+bun run yanclaw restart   # 重启
+```
+
 ## 其他命令
 
 ```bash
@@ -169,8 +193,10 @@ bun run format       # Biome 自动格式化
 
 - [功能设计](docs/DESIGN.md)
 - [功能需求](docs/FEATURES.md)
-- [开发日志](docs/CHANGELOG.md)
+- [API 文档](docs/API.md)
 - [数据库设计](docs/DATABASE.md)
+- [安全指南](docs/security-guide.md)
+- [更新日志](docs/CHANGELOG.md)
 
 ## License
 

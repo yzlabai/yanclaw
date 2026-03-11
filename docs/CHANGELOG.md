@@ -11,8 +11,28 @@
 | P2 完善 | ✅ | Slack/Discord 通道、Cron 定时任务、向量记忆、媒体管道、视觉支持、Playwright 浏览器、健康监控、Onboarding |
 | P3 扩展 | ✅ | 插件系统、会话自动清理、Tauri 桌面壳（托盘/IPC/快捷键/更新/安装包） |
 | P4 安全+审批 | ✅ | Bearer Token 认证、执行审批、Docker 沙箱、文件上传、会话导出、记忆预热/自动索引、Worker 隔离、媒体处理、全局快捷键、托盘状态 |
+| v0.3.0 | ✅ | 后台运行（关窗不退出）、托盘菜单增强、优雅退出、CLI 管理工具、Status/Shutdown API |
 
 ## 时间线
+
+### v0.3.0 — 后台运行 + CLI 管理（2026-03-11）
+
+→ [详细日志](devlogs/2026-03-11-background-running.md)
+
+- **窗口隐藏到托盘**：关闭窗口不退出，Gateway 继续后台运行（Ollama 风格）
+- **托盘菜单增强**：状态显示、Start/Stop/Restart 动态启用/禁用、Check for Updates
+- **优雅退出**：HTTP API 关闭 → 轮询进程退出 → 超时强杀
+- **Status API 增强**：返回完整运行状态（版本、uptime、渠道、Agent、内存）
+- **Shutdown API**：`POST /api/system/shutdown` 异步断开所有渠道后退出
+- **CLI 工具**：`yanclaw serve/start/stop/restart/status/help`，thin client 模式
+- **Tauri 白屏修复**：HashRouter + CORS tauri.localhost + 自动启动 Gateway
+- **cron-parser v5 修复**：`parseExpression` → `CronExpressionParser.parse()`
+
+### v0.2.0 — 模型系统重构 + Onboarding 改版（2026-03-10）
+
+- 多 Provider 模型系统（Anthropic/OpenAI/Google）
+- 2D 场景×偏好选择 + STT 支持
+- Onboarding 和 Settings 页面改版
 
 ### Phase 6 — 纵深安全加固（2026-03-10）
 
