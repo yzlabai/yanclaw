@@ -1,6 +1,16 @@
 import { Clock, Download, MessageSquare, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {
+	Pagination,
+	PaginationContent,
+	PaginationItem,
+	PaginationLink,
+	PaginationNext,
+	PaginationPrevious,
+} from "../components/ui/pagination";
 import { API_BASE, apiFetch } from "../lib/api";
 
 interface SessionInfo {
@@ -29,7 +39,7 @@ export function Sessions() {
 	const [total, setTotal] = useState(0);
 	const [agentFilter, setAgentFilter] = useState("");
 	const [search, setSearch] = useState("");
-	const [page, setPage] = useState(0);
+	const [page, setPage] = useState(1);
 	const limit = 20;
 
 	useEffect(() => {
@@ -42,7 +52,7 @@ export function Sessions() {
 	const fetchSessions = useCallback(() => {
 		const params = new URLSearchParams();
 		params.set("limit", String(limit));
-		params.set("offset", String(page * limit));
+		params.set("offset", String((page - 1) * limit));
 		if (agentFilter) params.set("agentId", agentFilter);
 
 		apiFetch(`${API_BASE}/api/sessions?${params}`)
@@ -121,7 +131,7 @@ export function Sessions() {
 	const totalPages = Math.ceil(total / limit);
 
 	return (
-		<div className="p-6 h-full flex flex-col">
+		<div className="p-6 h-full flex flex-col animate-fade-in-up">
 			<div className="flex items-center justify-between mb-4">
 				<h2 className="text-lg font-semibold">Sessions</h2>
 				<span className="text-sm text-muted-foreground">{total} total</span>
@@ -130,22 +140,21 @@ export function Sessions() {
 			{/* Filters */}
 			<div className="flex gap-3 mb-4">
 				<div className="relative flex-1 max-w-xs">
-					<Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-					<input
-						type="text"
+					<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+					<Input
+						placeholder="搜索会话..."
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
-						placeholder="Search sessions..."
-						className="w-full bg-muted rounded-lg pl-9 pr-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-primary"
+						className="pl-9 rounded-xl"
 					/>
 				</div>
 				<select
 					value={agentFilter}
 					onChange={(e) => {
 						setAgentFilter(e.target.value);
-						setPage(0);
+						setPage(1);
 					}}
-					className="bg-muted rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
+					className="bg-muted rounded-xl border border-input px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
 				>
 					<option value="">All Agents</option>
 					{agents.map((a) => (
@@ -165,7 +174,7 @@ export function Sessions() {
 						{filtered.map((s) => (
 							<div
 								key={s.key}
-								className="group flex items-center gap-4 px-4 py-3 rounded-lg hover:bg-muted/60 transition-colors"
+								className="group flex items-center gap-4 px-4 p-3 rounded-xl cursor-pointer transition-colors hover:bg-muted/50"
 							>
 								<button
 									type="button"
@@ -199,21 +208,24 @@ export function Sessions() {
 									</div>
 								</button>
 								<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-									<button
-										type="button"
+									<Button
+										variant="ghost"
+										size="icon-xs"
 										onClick={() => exportSession(s.key, "json")}
 										title="Export JSON"
-										className="text-muted-foreground hover:text-primary p-1"
+										className="text-muted-foreground hover:text-primary"
 									>
 										<Download className="size-4" />
-									</button>
-									<button
-										type="button"
+									</Button>
+									<Button
+										variant="ghost"
+										size="icon-xs"
 										onClick={() => deleteSession(s.key)}
-										className="text-muted-foreground hover:text-red-400 p-1"
+										title="Delete session"
+										className="text-muted-foreground hover:text-red-400"
 									>
 										<Trash2 className="size-4" />
-									</button>
+									</Button>
 								</div>
 							</div>
 						))}
@@ -223,26 +235,36 @@ export function Sessions() {
 
 			{/* Pagination */}
 			{totalPages > 1 && (
-				<div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-border">
-					<button
-						type="button"
-						onClick={() => setPage((p) => Math.max(0, p - 1))}
-						disabled={page === 0}
-						className="px-3 py-1 text-sm rounded-lg bg-muted text-foreground/80 hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-					>
-						Prev
-					</button>
-					<span className="text-sm text-muted-foreground">
-						{page + 1} / {totalPages}
-					</span>
-					<button
-						type="button"
-						onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-						disabled={page >= totalPages - 1}
-						className="px-3 py-1 text-sm rounded-lg bg-muted text-foreground/80 hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-					>
-						Next
-					</button>
+				<div className="mt-4 pt-4 border-t border-border">
+					<Pagination>
+						<PaginationContent>
+							<PaginationItem>
+								<PaginationPrevious
+									onClick={() => setPage(Math.max(1, page - 1))}
+									className={page <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+								/>
+							</PaginationItem>
+							{Array.from({ length: totalPages }, (_, i) => (
+								<PaginationItem key={i + 1}>
+									<PaginationLink
+										onClick={() => setPage(i + 1)}
+										isActive={page === i + 1}
+										className="cursor-pointer"
+									>
+										{i + 1}
+									</PaginationLink>
+								</PaginationItem>
+							))}
+							<PaginationItem>
+								<PaginationNext
+									onClick={() => setPage(Math.min(totalPages, page + 1))}
+									className={
+										page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"
+									}
+								/>
+							</PaginationItem>
+						</PaginationContent>
+					</Pagination>
 				</div>
 			)}
 		</div>
