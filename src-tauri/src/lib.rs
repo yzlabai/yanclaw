@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{
-    menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::{TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, State,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
@@ -14,6 +14,9 @@ struct GatewayState {
 
 struct TrayState {
     status_item: MenuItem<tauri::Wry>,
+    start_item: MenuItem<tauri::Wry>,
+    stop_item: MenuItem<tauri::Wry>,
+    restart_item: MenuItem<tauri::Wry>,
 }
 
 fn data_dir() -> PathBuf {
@@ -70,29 +73,92 @@ async fn start_gateway(state: State<'_, GatewayState>) -> Result<(), String> {
 
     let (cmd, args) = find_server_entry().ok_or("Could not find server entry point")?;
 
+    let log_dir = data_dir();
+    let _ = std::fs::create_dir_all(&log_dir);
+    let stdout_file = std::fs::File::create(log_dir.join("server.log"))
+        .map_err(|e| format!("Failed to create log file: {}", e))?;
+    let stderr_file = stdout_file.try_clone()
+        .map_err(|e| format!("Failed to clone log file: {}", e))?;
+
     let child = tokio::process::Command::new(&cmd)
         .args(&args)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdout(stdout_file)
+        .stderr(stderr_file)
         .spawn()
         .map_err(|e| format!("Failed to start gateway ({}): {}", cmd, e))?;
 
     *proc = Some(child);
-    log::info!("Gateway started");
+    log::info!("Gateway started: {} {:?}", cmd, args);
     Ok(())
 }
 
 #[tauri::command]
-async fn stop_gateway(state: State<'_, GatewayState>) -> Result<(), String> {
-    let child = {
-        let mut proc = state.process.lock().map_err(|e| e.to_string())?;
-        proc.take()
-    };
-    if let Some(mut child) = child {
-        child.kill().await.map_err(|e| format!("Failed to stop gateway: {}", e))?;
-        log::info!("Gateway stopped");
-    }
+async fn stop_gateway(app: AppHandle) -> Result<(), String> {
+    graceful_stop_gateway(&app).await;
     Ok(())
+}
+
+/// Gracefully stop the gateway: HTTP shutdown → wait → force kill
+async fn graceful_stop_gateway(app: &AppHandle) {
+    let port = get_gateway_port().await.unwrap_or(18789);
+
+    // 1. Try HTTP graceful shutdown first
+    if let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        let mut req = client.post(format!("http://127.0.0.1:{}/api/system/shutdown", port));
+        if let Ok(token) = get_auth_token().await {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let _ = req.send().await;
+    }
+
+    // 2. Wait for process to exit (max 5 seconds)
+    let state = app.state::<GatewayState>();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        if tokio::time::Instant::now() > deadline {
+            break;
+        }
+        // Check process status without holding lock across await
+        let exited = {
+            let mut guard = match state.process.lock() {
+                Ok(g) => g,
+                Err(_) => break,
+            };
+            match guard.as_mut() {
+                None => true,
+                Some(child) => {
+                    if child.try_wait().ok().flatten().is_some() {
+                        *guard = None;
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+        }; // guard dropped here
+        if exited {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+
+    // 3. Force kill if still running — take child out of mutex before awaiting
+    let child = {
+        let mut guard = match state.process.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        guard.take()
+    }; // guard dropped here
+    if let Some(mut child) = child {
+        log::warn!("Gateway did not exit gracefully, force killing");
+        let _ = child.kill().await;
+    }
+
+    log::info!("Gateway stopped");
 }
 
 #[tauri::command]
@@ -158,18 +224,6 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
 /// In dev: ("bun", ["run", "packages/server/src/index.ts"])
 /// In prod: ("path/to/yanclaw-server", [])  — compiled standalone binary
 fn find_server_entry() -> Option<(String, Vec<String>)> {
-    // In development, run from workspace with bun
-    let dev_path = std::env::current_dir()
-        .ok()?
-        .join("packages/server/src/index.ts");
-    if dev_path.exists() {
-        return Some((
-            "bun".to_string(),
-            vec!["run".to_string(), dev_path.to_string_lossy().to_string()],
-        ));
-    }
-
-    // In production, look for compiled standalone binary in bundled resources
     let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
 
     #[cfg(target_os = "windows")]
@@ -177,7 +231,7 @@ fn find_server_entry() -> Option<(String, Vec<String>)> {
     #[cfg(not(target_os = "windows"))]
     let binary_name = "yanclaw-server";
 
-    // Platform-specific resource paths
+    // First, check for compiled binary next to the executable (production)
     let candidates = [
         exe_dir.join(format!("server/{}", binary_name)),                      // Windows
         exe_dir.join(format!("../Resources/server/{}", binary_name)),         // macOS
@@ -191,27 +245,101 @@ fn find_server_entry() -> Option<(String, Vec<String>)> {
         }
     }
 
+    // Fallback: development mode — run from workspace with bun
+    if cfg!(debug_assertions) {
+        let dev_path = std::env::current_dir()
+            .ok()?
+            .join("packages/server/src/index.ts");
+        if dev_path.exists() {
+            return Some((
+                "bun".to_string(),
+                vec!["run".to_string(), dev_path.to_string_lossy().to_string()],
+            ));
+        }
+    }
+
     None
+}
+
+/// Show, unminimize, and focus the main window.
+fn show_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
 }
 
 fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let status_item =
         MenuItem::with_id(app, "status", "Gateway: Checking...", false, None::<&str>)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
     let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let start_item =
+        MenuItem::with_id(app, "start_gw", "Start Gateway", false, None::<&str>)?;
+    let stop_item =
+        MenuItem::with_id(app, "stop_gw", "Stop Gateway", false, None::<&str>)?;
+    let restart_item =
+        MenuItem::with_id(app, "restart_gw", "Restart Gateway", false, None::<&str>)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
     let update_item =
         MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
+    let sep4 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&status_item, &show, &update_item, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &status_item,
+            &sep1,
+            &show,
+            &sep2,
+            &start_item,
+            &stop_item,
+            &restart_item,
+            &sep3,
+            &update_item,
+            &sep4,
+            &quit,
+        ],
+    )?;
 
     let tray = TrayIconBuilder::new()
         .menu(&menu)
         .tooltip("YanClaw")
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { .. } = event {
+                show_window(tray.app_handle());
+            }
+        })
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                show_window(app);
+            }
+            "start_gw" => {
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = handle.state::<GatewayState>();
+                    if let Err(e) = start_gateway(state).await {
+                        log::warn!("Failed to start gateway from tray: {}", e);
+                    }
+                });
+            }
+            "stop_gw" => {
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    graceful_stop_gateway(&handle).await;
+                });
+            }
+            "restart_gw" => {
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    graceful_stop_gateway(&handle).await;
+                    let state = handle.state::<GatewayState>();
+                    if let Err(e) = start_gateway(state).await {
+                        log::warn!("Failed to restart gateway: {}", e);
+                    }
+                });
             }
             "check_update" => {
                 let handle = app.clone();
@@ -219,7 +347,6 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     match check_for_updates(handle.clone()).await {
                         Ok(Some(version)) => {
                             log::info!("Update available: {}", version);
-                            // Emit event to frontend for UI notification
                             let _ = handle.emit("update-available", version);
                         }
                         Ok(None) => {
@@ -232,18 +359,25 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
             "quit" => {
-                app.exit(0);
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    graceful_stop_gateway(&handle).await;
+                    handle.exit(0);
+                });
             }
             _ => {}
         })
         .build(app)?;
 
-    // Store status item for health check updates
+    // Store tray state for health check updates
     app.manage(TrayState {
-        status_item: status_item,
+        status_item,
+        start_item,
+        stop_item,
+        restart_item,
     });
 
-    // Periodic health check — update tray tooltip and status menu item
+    // Periodic health check — update tray tooltip, status, and menu item states
     let tray_id = tray.id().clone();
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -268,6 +402,10 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             }
             if let Some(state) = handle.try_state::<TrayState>() {
                 let _ = state.status_item.set_text(label);
+                // Enable/disable gateway control items based on status
+                let _ = state.start_item.set_enabled(!is_healthy);
+                let _ = state.stop_item.set_enabled(is_healthy);
+                let _ = state.restart_item.set_enabled(is_healthy);
             }
 
             tokio::time::sleep(std::time::Duration::from_secs(15)).await;
@@ -282,10 +420,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus existing window on second instance
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            show_window(app);
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
@@ -312,6 +447,23 @@ pub fn run() {
                 )?;
             }
 
+            // DevTools only in development mode
+            #[cfg(debug_assertions)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
+            }
+
+            // Intercept window close → hide to tray (don't exit)
+            if let Some(window) = app.get_webview_window("main") {
+                let w = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = w.hide();
+                    }
+                });
+            }
+
             setup_tray(app.handle())?;
 
             // Global shortcut: Ctrl+Shift+Y to show/focus window
@@ -319,11 +471,7 @@ pub fn run() {
             let handle = app.handle().clone();
             app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
                 if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                    if let Some(window) = handle.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.unminimize();
-                        let _ = window.set_focus();
-                    }
+                    show_window(&handle);
                 }
             }).map_err(|e| {
                 log::warn!("Failed to register global shortcut: {}", e);

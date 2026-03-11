@@ -13,7 +13,8 @@
 		"build": "bun run --filter '*' build",
 		"test": "vitest",
 		"check": "biome check .",
-		"format": "biome format --write ."
+		"format": "biome format --write .",
+		"yanclaw": "bun run packages/server/src/cli.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6",

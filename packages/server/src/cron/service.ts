@@ -1,4 +1,4 @@
-import { parseExpression } from "cron-parser";
+import { CronExpressionParser } from "cron-parser";
 import type { Config } from "../config/schema";
 
 /** Parse a duration string like "30s", "5m", "2h", "1d" to milliseconds. */
@@ -294,7 +294,7 @@ export class CronService {
 
 		// Cron expression
 		try {
-			const interval = parseExpression(schedule);
+			const interval = CronExpressionParser.parse(schedule);
 			const next = interval.next();
 			return next.getTime();
 		} catch {
