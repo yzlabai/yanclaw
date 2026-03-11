@@ -4,14 +4,126 @@ import { API_BASE, apiFetch } from "../lib/api";
 
 const STEPS = ["Model Setup", "Channels", "Ready"] as const;
 
-type Provider = "anthropic" | "openai" | "google";
+interface ProviderOption {
+	id: string;
+	label: string;
+	type: "anthropic" | "openai" | "google" | "ollama" | "openai-compatible";
+	needsApiKey: boolean;
+	needsBaseUrl: boolean;
+	defaultBaseUrl?: string;
+	placeholder?: string;
+	models: Array<{ value: string; label: string }>;
+}
+
+const PROVIDERS: ProviderOption[] = [
+	{
+		id: "anthropic",
+		label: "Anthropic",
+		type: "anthropic",
+		needsApiKey: true,
+		needsBaseUrl: false,
+		placeholder: "sk-ant-...",
+		models: [
+			{ value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+			{ value: "claude-opus-4-20250514", label: "Claude Opus 4" },
+			{ value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+		],
+	},
+	{
+		id: "openai",
+		label: "OpenAI",
+		type: "openai",
+		needsApiKey: true,
+		needsBaseUrl: false,
+		placeholder: "sk-...",
+		models: [
+			{ value: "gpt-4o", label: "GPT-4o" },
+			{ value: "gpt-4o-mini", label: "GPT-4o Mini" },
+			{ value: "o3-mini", label: "o3-mini" },
+		],
+	},
+	{
+		id: "google",
+		label: "Google",
+		type: "google",
+		needsApiKey: true,
+		needsBaseUrl: false,
+		placeholder: "AIza...",
+		models: [
+			{ value: "gemini-2.5-pro-preview-05-06", label: "Gemini 2.5 Pro" },
+			{ value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash" },
+			{ value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+		],
+	},
+	{
+		id: "deepseek",
+		label: "DeepSeek",
+		type: "openai-compatible",
+		needsApiKey: true,
+		needsBaseUrl: false,
+		defaultBaseUrl: "https://api.deepseek.com/v1",
+		placeholder: "sk-...",
+		models: [
+			{ value: "deepseek-chat", label: "DeepSeek Chat (V3)" },
+			{ value: "deepseek-reasoner", label: "DeepSeek Reasoner (R1)" },
+		],
+	},
+	{
+		id: "mistral",
+		label: "Mistral",
+		type: "openai-compatible",
+		needsApiKey: true,
+		needsBaseUrl: false,
+		defaultBaseUrl: "https://api.mistral.ai/v1",
+		placeholder: "...",
+		models: [
+			{ value: "mistral-large-latest", label: "Mistral Large" },
+			{ value: "mistral-small-latest", label: "Mistral Small" },
+		],
+	},
+	{
+		id: "volcengine",
+		label: "\u706B\u5C71\u65B9\u821F",
+		type: "openai-compatible",
+		needsApiKey: true,
+		needsBaseUrl: false,
+		defaultBaseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+		placeholder: "...",
+		models: [
+			{ value: "doubao-seed-1.6", label: "Doubao Seed 1.6" },
+			{ value: "doubao-1.5-pro-256k", label: "Doubao 1.5 Pro 256K" },
+			{ value: "deepseek-r1-250120", label: "DeepSeek R1 (\u65B9\u821F)" },
+			{ value: "deepseek-v3-241226", label: "DeepSeek V3 (\u65B9\u821F)" },
+		],
+	},
+	{
+		id: "ollama",
+		label: "Ollama",
+		type: "ollama",
+		needsApiKey: false,
+		needsBaseUrl: true,
+		defaultBaseUrl: "http://localhost:11434/v1",
+		models: [],
+	},
+	{
+		id: "custom",
+		label: "OpenAI Compatible",
+		type: "openai-compatible",
+		needsApiKey: true,
+		needsBaseUrl: true,
+		placeholder: "sk-...",
+		models: [],
+	},
+];
 
 export function Onboarding() {
 	const navigate = useNavigate();
 	const [step, setStep] = useState(0);
-	const [provider, setProvider] = useState<Provider>("anthropic");
+	const [providerId, setProviderId] = useState("anthropic");
 	const [apiKey, setApiKey] = useState("");
+	const [baseUrl, setBaseUrl] = useState("");
 	const [model, setModel] = useState("claude-sonnet-4-20250514");
+	const [customModel, setCustomModel] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
 
@@ -20,23 +132,45 @@ export function Onboarding() {
 	const [slackBotToken, setSlackBotToken] = useState("");
 	const [slackAppToken, setSlackAppToken] = useState("");
 
+	const providerDef = PROVIDERS.find((p) => p.id === providerId) ?? PROVIDERS[0];
+	const hasPresetModels = providerDef.models.length > 0;
+	const finalModel = hasPresetModels ? model : customModel;
+
+	const selectProvider = useCallback((p: ProviderOption) => {
+		setProviderId(p.id);
+		setApiKey("");
+		setBaseUrl(p.defaultBaseUrl ?? "");
+		if (p.models.length > 0) {
+			setModel(p.models[0].value);
+		}
+		setCustomModel("");
+	}, []);
+
 	const saveModelConfig = useCallback(async () => {
 		setSaving(true);
 		setError("");
 		try {
-			const providers: Record<string, unknown> = {};
-			providers[provider] = {
-				type: provider,
-				profiles: [{ id: "default", apiKey }],
+			const providerConfig: Record<string, unknown> = {
+				type: providerDef.type,
+				profiles: providerDef.needsApiKey ? [{ id: "default", apiKey }] : [],
 			};
+			const effectiveBaseUrl = baseUrl || providerDef.defaultBaseUrl;
+			if (effectiveBaseUrl) {
+				providerConfig.baseUrl = effectiveBaseUrl;
+			}
 
 			const patch: Record<string, unknown> = {
-				models: { providers },
+				models: {
+					providers: { [providerId]: providerConfig },
+				},
+				systemModels: {
+					chat: finalModel,
+				},
 				agents: [
 					{
 						id: "main",
-						name: "默认助手",
-						model,
+						name: "\u9ED8\u8BA4\u52A9\u624B",
+						model: finalModel,
 						systemPrompt: "You are a helpful assistant.",
 					},
 				],
@@ -55,7 +189,7 @@ export function Onboarding() {
 		} finally {
 			setSaving(false);
 		}
-	}, [provider, apiKey, model]);
+	}, [providerId, providerDef, apiKey, baseUrl, finalModel]);
 
 	const saveChannelConfig = useCallback(async () => {
 		setSaving(true);
@@ -101,24 +235,7 @@ export function Onboarding() {
 		}
 	}, [telegramToken, slackBotToken, slackAppToken]);
 
-	const modelOptions =
-		provider === "anthropic"
-			? [
-					{ value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-					{ value: "claude-opus-4-20250514", label: "Claude Opus 4" },
-					{ value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-				]
-			: provider === "google"
-				? [
-						{ value: "gemini-2.5-pro-preview-05-06", label: "Gemini 2.5 Pro" },
-						{ value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash" },
-						{ value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-					]
-				: [
-						{ value: "gpt-4o", label: "GPT-4o" },
-						{ value: "gpt-4o-mini", label: "GPT-4o Mini" },
-						{ value: "o3-mini", label: "o3-mini" },
-					];
+	const canContinue = providerDef.needsApiKey ? !!apiKey && !!finalModel : !!finalModel;
 
 	return (
 		<div className="flex items-center justify-center h-full">
@@ -154,88 +271,86 @@ export function Onboarding() {
 						<div>
 							<h2 className="text-xl font-semibold text-foreground mb-1">Welcome to YanClaw</h2>
 							<p className="text-muted-foreground text-sm">
-								Let's get you started. First, choose your AI model provider and enter your API key.
+								Choose your AI model provider and enter your API key.
 							</p>
 						</div>
 
 						<div>
 							<label className="block text-sm text-foreground/80 mb-2">Provider</label>
-							<div className="flex gap-3">
-								<button
-									type="button"
-									onClick={() => {
-										setProvider("anthropic");
-										setModel("claude-sonnet-4-20250514");
-									}}
-									className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-colors ${
-										provider === "anthropic"
-											? "border-primary bg-primary/10 text-primary"
-											: "border-border text-muted-foreground hover:border-border"
-									}`}
-								>
-									Anthropic
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setProvider("openai");
-										setModel("gpt-4o");
-									}}
-									className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-colors ${
-										provider === "openai"
-											? "border-primary bg-primary/10 text-primary"
-											: "border-border text-muted-foreground hover:border-border"
-									}`}
-								>
-									OpenAI
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setProvider("google");
-										setModel("gemini-2.5-flash-preview-04-17");
-									}}
-									className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-colors ${
-										provider === "google"
-											? "border-primary bg-primary/10 text-primary"
-											: "border-border text-muted-foreground hover:border-border"
-									}`}
-								>
-									Google
-								</button>
+							<div className="grid grid-cols-4 gap-2">
+								{PROVIDERS.map((p) => (
+									<button
+										key={p.id}
+										type="button"
+										onClick={() => selectProvider(p)}
+										className={`py-2.5 rounded-lg border text-xs font-medium transition-colors ${
+											providerId === p.id
+												? "border-primary bg-primary/10 text-primary"
+												: "border-border text-muted-foreground hover:border-border hover:bg-muted"
+										}`}
+									>
+										{p.label}
+									</button>
+								))}
 							</div>
 						</div>
 
-						<div>
-							<label className="block text-sm text-foreground/80 mb-1">API Key</label>
-							<input
-								type="password"
-								value={apiKey}
-								onChange={(e) => setApiKey(e.target.value)}
-								placeholder={
-									provider === "anthropic"
-										? "sk-ant-..."
-										: provider === "google"
-											? "AIza..."
-											: "sk-..."
-								}
-								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
-							/>
-						</div>
+						{providerDef.needsApiKey && (
+							<div>
+								<label className="block text-sm text-foreground/80 mb-1">API Key</label>
+								<input
+									type="password"
+									value={apiKey}
+									onChange={(e) => setApiKey(e.target.value)}
+									placeholder={providerDef.placeholder ?? "API key"}
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
+								/>
+							</div>
+						)}
+
+						{(providerDef.needsBaseUrl || providerDef.defaultBaseUrl) && (
+							<div>
+								<label className="block text-sm text-foreground/80 mb-1">
+									API Base URL
+									{providerDef.defaultBaseUrl && !providerDef.needsBaseUrl && (
+										<span className="text-muted-foreground font-normal ml-1">(optional)</span>
+									)}
+								</label>
+								<input
+									type="text"
+									value={baseUrl}
+									onChange={(e) => setBaseUrl(e.target.value)}
+									placeholder={providerDef.defaultBaseUrl ?? "https://api.example.com/v1"}
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
+								/>
+							</div>
+						)}
 
 						<div>
 							<label className="block text-sm text-foreground/80 mb-1">Default Model</label>
-							<select
-								value={model}
-								onChange={(e) => setModel(e.target.value)}
-								className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
-							>
-								{modelOptions.map((opt) => (
-									<option key={opt.value} value={opt.value}>
-										{opt.label}
-									</option>
-								))}
-							</select>
+							{hasPresetModels ? (
+								<select
+									value={model}
+									onChange={(e) => setModel(e.target.value)}
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
+								>
+									{providerDef.models.map((opt) => (
+										<option key={opt.value} value={opt.value}>
+											{opt.label}
+										</option>
+									))}
+								</select>
+							) : (
+								<input
+									type="text"
+									value={customModel}
+									onChange={(e) => setCustomModel(e.target.value)}
+									placeholder={
+										providerDef.type === "ollama" ? "llama3.3, qwen3:32b, ..." : "model-name"
+									}
+									className="w-full bg-muted rounded-lg px-4 py-2 text-foreground placeholder-muted-foreground outline-none focus:ring-2 focus:ring-ring"
+								/>
+							)}
 						</div>
 
 						{error && <p className="text-red-400 text-sm">{error}</p>}
@@ -243,7 +358,7 @@ export function Onboarding() {
 						<button
 							type="button"
 							onClick={saveModelConfig}
-							disabled={!apiKey || saving}
+							disabled={!canContinue || saving}
 							className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-foreground py-2.5 rounded-lg transition-colors font-medium"
 						>
 							{saving ? "Saving..." : "Continue"}
