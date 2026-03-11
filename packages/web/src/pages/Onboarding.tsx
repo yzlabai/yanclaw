@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Skeleton } from "../components/ui/skeleton";
 import { API_BASE, apiFetch } from "../lib/api";
 
 interface ProviderOption {
@@ -12,7 +13,6 @@ interface ProviderOption {
 	needsBaseUrl: boolean;
 	defaultBaseUrl?: string;
 	placeholder?: string;
-	models: Array<{ value: string; label: string }>;
 }
 
 const PROVIDERS: ProviderOption[] = [
@@ -23,11 +23,6 @@ const PROVIDERS: ProviderOption[] = [
 		needsApiKey: true,
 		needsBaseUrl: false,
 		placeholder: "sk-ant-...",
-		models: [
-			{ value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-			{ value: "claude-opus-4-20250514", label: "Claude Opus 4" },
-			{ value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-		],
 	},
 	{
 		id: "openai",
@@ -36,11 +31,6 @@ const PROVIDERS: ProviderOption[] = [
 		needsApiKey: true,
 		needsBaseUrl: false,
 		placeholder: "sk-...",
-		models: [
-			{ value: "gpt-4o", label: "GPT-4o" },
-			{ value: "gpt-4o-mini", label: "GPT-4o Mini" },
-			{ value: "o3-mini", label: "o3-mini" },
-		],
 	},
 	{
 		id: "google",
@@ -49,11 +39,6 @@ const PROVIDERS: ProviderOption[] = [
 		needsApiKey: true,
 		needsBaseUrl: false,
 		placeholder: "AIza...",
-		models: [
-			{ value: "gemini-2.5-pro-preview-05-06", label: "Gemini 2.5 Pro" },
-			{ value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash" },
-			{ value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-		],
 	},
 	{
 		id: "deepseek",
@@ -63,10 +48,6 @@ const PROVIDERS: ProviderOption[] = [
 		needsBaseUrl: false,
 		defaultBaseUrl: "https://api.deepseek.com/v1",
 		placeholder: "sk-...",
-		models: [
-			{ value: "deepseek-chat", label: "DeepSeek Chat (V3)" },
-			{ value: "deepseek-reasoner", label: "DeepSeek Reasoner (R1)" },
-		],
 	},
 	{
 		id: "mistral",
@@ -76,25 +57,15 @@ const PROVIDERS: ProviderOption[] = [
 		needsBaseUrl: false,
 		defaultBaseUrl: "https://api.mistral.ai/v1",
 		placeholder: "...",
-		models: [
-			{ value: "mistral-large-latest", label: "Mistral Large" },
-			{ value: "mistral-small-latest", label: "Mistral Small" },
-		],
 	},
 	{
 		id: "volcengine",
-		label: "\u706B\u5C71\u65B9\u821F",
+		label: "火山方舟",
 		type: "openai-compatible",
 		needsApiKey: true,
 		needsBaseUrl: false,
 		defaultBaseUrl: "https://ark.cn-beijing.volces.com/api/v3",
 		placeholder: "...",
-		models: [
-			{ value: "doubao-seed-1.6", label: "Doubao Seed 1.6" },
-			{ value: "doubao-1.5-pro-256k", label: "Doubao 1.5 Pro 256K" },
-			{ value: "deepseek-r1-250120", label: "DeepSeek R1 (\u65B9\u821F)" },
-			{ value: "deepseek-v3-241226", label: "DeepSeek V3 (\u65B9\u821F)" },
-		],
 	},
 	{
 		id: "ollama",
@@ -103,7 +74,6 @@ const PROVIDERS: ProviderOption[] = [
 		needsApiKey: false,
 		needsBaseUrl: true,
 		defaultBaseUrl: "http://localhost:11434/v1",
-		models: [],
 	},
 	{
 		id: "custom",
@@ -112,7 +82,6 @@ const PROVIDERS: ProviderOption[] = [
 		needsApiKey: true,
 		needsBaseUrl: true,
 		placeholder: "sk-...",
-		models: [],
 	},
 ];
 
@@ -151,10 +120,16 @@ export function Onboarding() {
 	const [providerId, setProviderId] = useState("anthropic");
 	const [apiKey, setApiKey] = useState("");
 	const [baseUrl, setBaseUrl] = useState("");
-	const [model, setModel] = useState("claude-sonnet-4-20250514");
+	const [model, setModel] = useState("");
 	const [customModel, setCustomModel] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
+
+	// Model fetching state
+	const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string }>>([]);
+	const [loadingModels, setLoadingModels] = useState(false);
+	const [modelError, setModelError] = useState("");
+	const [manualInput, setManualInput] = useState(false);
 
 	// Channel setup (optional)
 	const [telegramToken, setTelegramToken] = useState("");
@@ -162,18 +137,60 @@ export function Onboarding() {
 	const [slackAppToken, setSlackAppToken] = useState("");
 
 	const providerDef = PROVIDERS.find((p) => p.id === providerId) ?? PROVIDERS[0];
-	const hasPresetModels = providerDef.models.length > 0;
-	const finalModel = hasPresetModels ? model : customModel;
+	const finalModel = manualInput || availableModels.length === 0 ? customModel : model;
+
+	const fetchModels = useCallback(async () => {
+		setLoadingModels(true);
+		setModelError("");
+		try {
+			const provider = PROVIDERS.find((p) => p.id === providerId) ?? PROVIDERS[0];
+			const res = await apiFetch(`${API_BASE}/api/models/list`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					providerType: provider.type,
+					apiKey: apiKey,
+					baseUrl: baseUrl || provider.defaultBaseUrl,
+				}),
+			});
+			const data = (await res.json()) as {
+				models: Array<{ id: string; name: string }>;
+				error?: string;
+			};
+			if (data.error) {
+				setModelError(data.error);
+				setAvailableModels([]);
+			} else {
+				setAvailableModels(data.models);
+				if (data.models.length > 0) {
+					setModel(data.models[0].id);
+				}
+			}
+		} catch {
+			setModelError("获取模型列表失败");
+			setAvailableModels([]);
+		} finally {
+			setLoadingModels(false);
+		}
+	}, [providerId, apiKey, baseUrl]);
 
 	const selectProvider = useCallback((p: ProviderOption) => {
 		setProviderId(p.id);
 		setApiKey("");
 		setBaseUrl(p.defaultBaseUrl ?? "");
-		if (p.models.length > 0) {
-			setModel(p.models[0].value);
-		}
+		setModel("");
 		setCustomModel("");
+		setAvailableModels([]);
+		setModelError("");
+		setManualInput(false);
 	}, []);
+
+	// Auto-fetch models for Ollama (no API key needed)
+	useEffect(() => {
+		if (providerDef.type === "ollama" && !providerDef.needsApiKey) {
+			fetchModels();
+		}
+	}, [providerDef.type, providerDef.needsApiKey, fetchModels]);
 
 	const saveModelConfig = useCallback(async () => {
 		setSaving(true);
@@ -198,7 +215,7 @@ export function Onboarding() {
 				agents: [
 					{
 						id: "main",
-						name: "\u9ED8\u8BA4\u52A9\u624B",
+						name: "默认助手",
 						model: finalModel,
 						systemPrompt: "You are a helpful assistant.",
 					},
@@ -265,6 +282,8 @@ export function Onboarding() {
 	}, [telegramToken, slackBotToken, slackAppToken]);
 
 	const canContinue = providerDef.needsApiKey ? !!apiKey && !!finalModel : !!finalModel;
+	const showFetchButton =
+		availableModels.length === 0 && !loadingModels && !manualInput && !modelError;
 
 	return (
 		<div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -344,20 +363,66 @@ export function Onboarding() {
 							)}
 
 							<div>
-								<label className="block text-sm text-foreground/80 mb-1">Default Model</label>
-								{hasPresetModels ? (
+								<div className="flex items-center justify-between mb-1">
+									<label className="block text-sm text-foreground/80">Default Model</label>
+									{(availableModels.length > 0 || modelError) && (
+										<button
+											type="button"
+											onClick={() => setManualInput(!manualInput)}
+											className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+										>
+											{manualInput ? "从列表选择" : "手动输入"}
+										</button>
+									)}
+								</div>
+
+								{/* Fetch models button */}
+								{showFetchButton && (
+									<Button
+										variant="outline"
+										onClick={fetchModels}
+										disabled={providerDef.needsApiKey && !apiKey}
+										className="w-full rounded-xl mb-2"
+									>
+										验证并获取模型
+									</Button>
+								)}
+
+								{/* Loading state */}
+								{loadingModels && <Skeleton className="h-10 w-full rounded-xl" />}
+
+								{/* Model dropdown from API */}
+								{!loadingModels && availableModels.length > 0 && !manualInput && (
 									<select
 										value={model}
 										onChange={(e) => setModel(e.target.value)}
 										className="w-full bg-muted rounded-xl px-4 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
 									>
-										{providerDef.models.map((opt) => (
-											<option key={opt.value} value={opt.value}>
-												{opt.label}
+										{availableModels.map((opt) => (
+											<option key={opt.id} value={opt.id}>
+												{opt.name}
 											</option>
 										))}
 									</select>
-								) : (
+								)}
+
+								{/* Error state */}
+								{!loadingModels && modelError && !manualInput && (
+									<div className="space-y-2">
+										<p className="text-red-400 text-sm">{modelError}</p>
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={() => setManualInput(true)}
+											className="rounded-xl"
+										>
+											手动输入模型 ID
+										</Button>
+									</div>
+								)}
+
+								{/* Manual input mode */}
+								{!loadingModels && manualInput && (
 									<Input
 										type="text"
 										value={customModel}
