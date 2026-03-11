@@ -11,9 +11,18 @@
 | P2 完善 | ✅ | Slack/Discord 通道、Cron 定时任务、向量记忆、媒体管道、视觉支持、Playwright 浏览器、健康监控、Onboarding |
 | P3 扩展 | ✅ | 插件系统、会话自动清理、Tauri 桌面壳（托盘/IPC/快捷键/更新/安装包） |
 | P4 安全+审批 | ✅ | Bearer Token 认证、执行审批、Docker 沙箱、文件上传、会话导出、记忆预热/自动索引、Worker 隔离、媒体处理、全局快捷键、托盘状态 |
+| v0.4.0 | ✅ | 桌面截图工具、Claude Code Agent SDK 运行时、双运行时架构、像素风 Logo |
 | v0.3.0 | ✅ | 后台运行（关窗不退出）、托盘菜单增强、优雅退出、CLI 管理工具、Status/Shutdown API |
 
 ## 时间线
+
+### v0.4.0 — 桌面截图 + Claude Code 运行时（2026-03-11）
+
+- **桌面截图工具 (`screenshot_desktop`)**：macOS `screencapture` 集成，支持全屏和区域截图，返回 base64 data URL，ownerOnly
+- **Claude Code Agent SDK 运行时**：`runtime: "claude-code"` 配置项，适配 `@anthropic-ai/claude-agent-sdk` query() API，支持会话恢复、MCP Server、子 Agent
+- **双运行时架构**：Agent 可在 Vercel AI SDK 和 Claude Code Agent SDK 之间按需切换
+- **前端 Agent 管理增强**：运行时选择器、Claude Code 配置面板、Agent 卡片 badge
+- **像素风 Logo**：全新像素艺术风格 SVG 图标（三道爪痕）
 
 ### v0.3.0 — 后台运行 + CLI 管理（2026-03-11）
 

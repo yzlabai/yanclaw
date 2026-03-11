@@ -28,6 +28,7 @@ const app = new Hono()
 				"http://localhost:5173",
 				"http://tauri.localhost",
 				"https://tauri.localhost",
+				"tauri://localhost",
 			],
 		}),
 	)

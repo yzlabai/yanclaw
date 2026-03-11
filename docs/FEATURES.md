@@ -120,6 +120,32 @@ WebSocket 上运行标准 JSON-RPC 2.0 协议：
 - **上下文窗口管理**: 超出 token 预算时自动压缩历史（保留系统消息 + 近期消息）
 - **工具结果截断**: 超过 10KB 的输出自动截断
 
+### F2.2b Claude Code Agent SDK 运行时
+
+Agent 可选择使用 Claude Code Agent SDK 作为替代运行时：
+
+- **配置**: `agentConfig.runtime = "claude-code"`
+- **能力**: 内置 Read/Edit/Write/Bash/Glob/Grep 等工具，支持 MCP Server、子 Agent
+- **权限模式**: `default` / `acceptEdits` / `bypassPermissions`
+- **会话恢复**: 通过 SDK session ID 支持多轮对话（内存 Map 存储映射）
+- **事件映射**: SDK 消息 → AgentEvent（delta/thinking/tool_call/tool_result/done/error）
+
+```json5
+{
+  "agents": [{
+    "id": "coder",
+    "runtime": "claude-code",
+    "claudeCode": {
+      "allowedTools": ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
+      "permissionMode": "acceptEdits",
+      "maxTurns": 50,
+      "mcpServers": {},
+      "agents": {}
+    }
+  }]
+}
+```
+
 ### F2.3 认证 Profile + 模型故障转移
 
 参考 OpenClaw auth-profiles 系统：
@@ -162,6 +188,7 @@ WebSocket 上运行标准 JSON-RPC 2.0 协议：
 | `browser` | 浏览器自动化（Playwright） | 中 | 是 |
 | `message` | 向消息通道发送消息 | 低 | 否 |
 | `memory_search` | 向量记忆检索 | 低 | 否 |
+| `screenshot_desktop` | macOS 桌面截图（screencapture） | 中 | 是 |
 
 ### F3.2 工具策略系统
 
@@ -189,6 +216,7 @@ type ToolPolicy = {
 | `group:web` | web_search, web_fetch |
 | `group:file` | file_read, file_write, file_edit |
 | `group:exec` | shell |
+| `group:desktop` | screenshot_desktop |
 | `group:plugins` | 所有插件注册的工具 |
 
 配置示例：
