@@ -71,7 +71,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 			.then((r) => r.json())
 			.then((data: { needsSetup: boolean }) => setNeedsSetup(data.needsSetup))
 			.catch(() => setNeedsSetup(false));
-	}, [gatewayReady, location.pathname]);
+	}, [gatewayReady]);
 
 	if (needsSetup === null) return null; // loading
 

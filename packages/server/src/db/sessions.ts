@@ -182,7 +182,7 @@ export class SessionStore {
 		for (const msg of rows) {
 			if (msg.role === "system") continue;
 			// Preserve messages with image references to avoid breaking vision context
-			if (msg.content && /\!\[.*\]\(|"type"\s*:\s*"image"/.test(msg.content)) continue;
+			if (msg.content && /!\[.*\]\(|"type"\s*:\s*"image"/.test(msg.content)) continue;
 			accumulated += msg.tokenCount;
 			toDelete.push(msg.id);
 			if (accumulated >= tokensToFree) break;
