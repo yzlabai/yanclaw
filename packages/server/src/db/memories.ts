@@ -185,18 +185,20 @@ export class MemoryStore {
 		return scored;
 	}
 
-	/** Hybrid search: combines FTS5 keyword + vector similarity. */
+	/** Hybrid search: combines FTS5 keyword + vector similarity, with MMR dedup and temporal decay. */
 	async search(
 		agentId: string,
 		query: string,
 		queryEmbedding?: Float32Array,
 		limit = 10,
 	): Promise<MemorySearchResult[]> {
+		// Fetch more candidates than needed so MMR has room to filter
+		const candidateLimit = limit * 3;
 		const results = new Map<string, MemorySearchResult>();
 
 		// FTS5 keyword search
 		try {
-			const ftsResults = await this.searchFts(agentId, query, limit);
+			const ftsResults = await this.searchFts(agentId, query, candidateLimit);
 			for (const r of ftsResults) {
 				results.set(r.id, r);
 			}
@@ -206,7 +208,7 @@ export class MemoryStore {
 
 		// Vector search if embedding available
 		if (queryEmbedding) {
-			const vecResults = await this.searchVector(agentId, queryEmbedding, limit);
+			const vecResults = await this.searchVector(agentId, queryEmbedding, candidateLimit);
 			for (const r of vecResults) {
 				const existing = results.get(r.id);
 				if (existing) {
@@ -218,9 +220,13 @@ export class MemoryStore {
 			}
 		}
 
-		return Array.from(results.values())
-			.sort((a, b) => b.score - a.score)
-			.slice(0, limit);
+		let candidates = Array.from(results.values());
+
+		// Apply temporal decay: recent memories scored higher (30-day half-life)
+		candidates = applyTemporalDecay(candidates);
+
+		// Apply MMR to reduce redundancy in results
+		return applyMMR(candidates, 0.7, limit);
 	}
 
 	/** Count memories for an agent. */
@@ -245,6 +251,77 @@ function toMemoryEntry(row: typeof memories.$inferSelect): MemoryEntry {
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	};
+}
+
+/**
+ * Temporal decay: apply exponential decay based on memory age.
+ * Half-life of 30 days — memories from 30 days ago get 50% of their score.
+ */
+function applyTemporalDecay(
+	results: MemorySearchResult[],
+	halfLifeDays = 30,
+): MemorySearchResult[] {
+	const lambda = Math.LN2 / halfLifeDays;
+	const now = Date.now();
+
+	return results
+		.map((r) => {
+			const ageDays = (now - r.createdAt) / (1000 * 60 * 60 * 24);
+			const decay = Math.exp(-lambda * ageDays);
+			return { ...r, score: r.score * (0.3 + 0.7 * decay) }; // Floor at 30% to avoid zeroing old memories
+		})
+		.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Maximal Marginal Relevance: select diverse results by penalizing redundancy.
+ * lambda controls relevance vs diversity tradeoff (1.0 = pure relevance, 0.0 = pure diversity).
+ */
+function applyMMR(results: MemorySearchResult[], lambda = 0.7, topK = 10): MemorySearchResult[] {
+	if (results.length <= topK) return results;
+
+	const selected: MemorySearchResult[] = [];
+	const remaining = [...results];
+
+	while (selected.length < topK && remaining.length > 0) {
+		let bestIdx = 0;
+		let bestScore = -Infinity;
+
+		for (let i = 0; i < remaining.length; i++) {
+			const relevance = remaining[i].score;
+
+			// Max similarity to any already-selected result (using Jaccard on text tokens)
+			const maxSim =
+				selected.length === 0
+					? 0
+					: Math.max(...selected.map((s) => jaccardSimilarity(s.content, remaining[i].content)));
+
+			const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+			if (mmrScore > bestScore) {
+				bestScore = mmrScore;
+				bestIdx = i;
+			}
+		}
+
+		selected.push(remaining.splice(bestIdx, 1)[0]);
+	}
+
+	return selected;
+}
+
+/** Jaccard similarity on word-level tokens (for MMR diversity). */
+function jaccardSimilarity(a: string, b: string): number {
+	const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
+	const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
+	if (wordsA.size === 0 && wordsB.size === 0) return 1;
+
+	let intersection = 0;
+	for (const w of wordsA) {
+		if (wordsB.has(w)) intersection++;
+	}
+
+	const union = wordsA.size + wordsB.size - intersection;
+	return union === 0 ? 0 : intersection / union;
 }
 
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {

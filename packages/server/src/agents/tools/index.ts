@@ -2,28 +2,37 @@ import { jsonSchema, tool } from "ai";
 import type { ApprovalManager } from "../../approvals";
 import type { Config, ToolsConfig } from "../../config/schema";
 import type { MemoryStore } from "../../db/memories";
+import type { SessionStore } from "../../db/sessions";
 import type { McpClientManager } from "../../mcp/client";
 import {
 	createBrowserActionTool,
 	createBrowserNavigateTool,
 	createBrowserScreenshotTool,
 } from "./browser";
+import { createCodeExecTool } from "./code-exec";
 import { createDockerShellTool } from "./docker-shell";
 import { createFileEditTool, createFileReadTool, createFileWriteTool } from "./file";
 import { createMemoryDeleteTool, createMemorySearchTool, createMemoryStoreTool } from "./memory";
+import { checkSafeBin } from "./safe-bins";
 import { createDesktopScreenshotTool } from "./screenshot";
+import {
+	createSessionHistoryTool,
+	createSessionListTool,
+	createSessionSendTool,
+} from "./session-comm";
 import { createShellTool } from "./shell";
 import { createWebFetchTool, createWebSearchTool } from "./web";
 
 export type { ToolAuthorizationError, ToolInputError } from "./common";
 
 const TOOL_GROUPS: Record<string, string[]> = {
-	"group:exec": ["shell"],
+	"group:exec": ["shell", "code_exec"],
 	"group:file": ["file_read", "file_write", "file_edit"],
 	"group:web": ["web_search", "web_fetch"],
 	"group:browser": ["browser_navigate", "browser_screenshot", "browser_action"],
 	"group:memory": ["memory_store", "memory_search", "memory_delete"],
 	"group:desktop": ["screenshot_desktop"],
+	"group:session": ["session_list", "session_send", "session_history"],
 };
 
 const OWNER_ONLY_TOOLS = new Set([
@@ -34,6 +43,7 @@ const OWNER_ONLY_TOOLS = new Set([
 	"browser_screenshot",
 	"browser_action",
 	"screenshot_desktop",
+	"session_send",
 ]);
 
 function expandGroups(names: string[]): string[] {
@@ -75,13 +85,25 @@ const TOOL_CAPABILITIES: Record<string, string[]> = {
 	memory_search: ["memory:read"],
 	memory_delete: ["memory:write"],
 	screenshot_desktop: ["desktop:capture"],
+	code_exec: ["exec:sandbox"],
+	session_list: ["session:read"],
+	session_send: ["session:write"],
+	session_history: ["session:read"],
 };
 
 /** Predefined capability presets. */
 const CAPABILITY_PRESETS: Record<string, string[]> = {
 	"safe-reader": ["fs:read", "memory:read"],
 	researcher: ["fs:read", "net:http", "memory:read", "memory:write"],
-	developer: ["fs:read", "fs:write", "exec:shell", "net:http", "memory:read", "memory:write"],
+	developer: [
+		"fs:read",
+		"fs:write",
+		"exec:shell",
+		"exec:sandbox",
+		"net:http",
+		"memory:read",
+		"memory:write",
+	],
 	"full-access": ["*"],
 };
 
@@ -148,14 +170,6 @@ export function isToolAllowed(
 	return toolsConfig.policy.default === "allow";
 }
 
-/** Extract the first binary/command name from a shell command string. */
-function extractBinary(command: string): string {
-	const trimmed = command.trimStart();
-	// Skip env vars like VAR=val, sudo, etc.
-	const match = trimmed.match(/^(?:sudo\s+)?(?:\w+=\S+\s+)*(\S+)/);
-	return match?.[1]?.split("/").pop() ?? trimmed.split(/\s/)[0] ?? "";
-}
-
 export async function createToolset(opts: {
 	workspaceDir: string;
 	toolsConfig: ToolsConfig;
@@ -170,6 +184,7 @@ export async function createToolset(opts: {
 	approvalManager?: ApprovalManager;
 	agentCapabilities?: string | string[];
 	mcpClientManager?: McpClientManager;
+	sessionStore?: SessionStore;
 }) {
 	const { workspaceDir, toolsConfig, agentTools, channelId, isOwner = true } = opts;
 	const timeout = toolsConfig.exec.timeout;
@@ -195,6 +210,14 @@ export async function createToolset(opts: {
 		screenshot_desktop: createDesktopScreenshotTool(),
 	};
 
+	// Add code_exec tool if enabled
+	if (toolsConfig.codeExec?.enabled) {
+		allTools.code_exec = createCodeExecTool({
+			workspaceDir,
+			config: toolsConfig.codeExec as import("./code-exec-runner").CodeExecConfig,
+		});
+	}
+
 	// Add memory tools if memory store is available
 	if (opts.memoryStore && opts.agentId && opts.config) {
 		allTools.memory_store = createMemoryStoreTool({
@@ -210,6 +233,21 @@ export async function createToolset(opts: {
 		});
 		allTools.memory_delete = createMemoryDeleteTool({
 			memoryStore: opts.memoryStore,
+		});
+	}
+
+	// Add cross-session communication tools if session store is available
+	if (opts.sessionStore && opts.sessionKey) {
+		allTools.session_list = createSessionListTool({
+			sessionStore: opts.sessionStore,
+		});
+		allTools.session_send = createSessionSendTool({
+			sessionStore: opts.sessionStore,
+			currentSessionKey: opts.sessionKey,
+			currentAgentId: opts.agentId,
+		});
+		allTools.session_history = createSessionHistoryTool({
+			sessionStore: opts.sessionStore,
 		});
 	}
 
@@ -263,8 +301,12 @@ export async function createToolset(opts: {
 		tools.shell = {
 			...originalShell,
 			execute: async (args: { command: string }, execOpts: unknown) => {
-				const binary = extractBinary(args.command);
-				if (approvalManager.needsApproval(binary, askMode, safeBins)) {
+				// SafeBins: check command + arguments against security profiles
+				const safeBinResult = checkSafeBin(args.command, safeBins);
+				const needsApproval =
+					askMode === "always" || (askMode === "on-miss" && !safeBinResult.safe);
+
+				if (needsApproval) {
 					const decision = await approvalManager.requestApproval({
 						sessionKey,
 						toolName: "shell",

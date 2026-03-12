@@ -203,6 +203,38 @@ export class SessionStore {
 		return toDelete.length;
 	}
 
+	/** Reset a session: clear all messages but keep session metadata. Returns message count deleted. */
+	resetSession(key: string): number {
+		const db = getDb();
+		const result = db.delete(messages).where(eq(messages.sessionKey, key)).run();
+		if (result.changes > 0) {
+			db.update(sessions)
+				.set({ messageCount: 0, tokenCount: 0, updatedAt: Date.now() })
+				.where(eq(sessions.key, key))
+				.run();
+		}
+		return result.changes;
+	}
+
+	/** Reset sessions idle for more than `idleMs` milliseconds. Returns number of sessions reset. */
+	resetIdle(idleMs: number): number {
+		const cutoff = Date.now() - idleMs;
+		const db = getDb();
+		// Find sessions with messages that haven't been updated since cutoff
+		const staleSessions = db
+			.select({ key: sessions.key })
+			.from(sessions)
+			.where(and(lt(sessions.updatedAt, cutoff), sql`${sessions.messageCount} > 0`))
+			.all();
+
+		let count = 0;
+		for (const s of staleSessions) {
+			const deleted = this.resetSession(s.key);
+			if (deleted > 0) count++;
+		}
+		return count;
+	}
+
 	/** Delete sessions not updated in the last `days` days. Returns number of sessions deleted. */
 	pruneStale(days: number): number {
 		if (days <= 0) return 0;

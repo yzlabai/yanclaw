@@ -10,15 +10,14 @@ import type { McpClientManager } from "../mcp/client";
 import type { MediaStore } from "../media";
 import { generateEmbedding } from "../memory/embeddings";
 import type { LeakDetector } from "../security/leak-detector";
-import {
-	checkDataFlow,
-	detectInjection,
-	SAFETY_SUFFIX,
-	wrapUntrustedContent,
-} from "../security/sanitize";
+import { checkDataFlow, detectInjection, wrapUntrustedContent } from "../security/sanitize";
 import { runClaudeCode } from "./claude-code-runtime";
+import { compactMessages, flushToMemory, needsCompaction } from "./compaction";
 import { ModelManager } from "./model-manager";
+import { buildSystemPrompt } from "./system-prompt-builder";
 import { createToolset } from "./tools";
+import { LoopDetector } from "./tools/loop-detector";
+import type { UsageTracker } from "./usage-tracker";
 
 export type AgentEvent =
 	| { type: "delta"; sessionKey: string; text: string }
@@ -38,8 +37,12 @@ export class AgentRuntime {
 	private mediaStore?: MediaStore;
 	private leakDetector?: LeakDetector;
 	private mcpClientManager?: McpClientManager;
+	private usageTracker?: UsageTracker;
+	private loopDetector = new LoopDetector();
 	/** Maps YanClaw sessionKey → Agent SDK session ID (for resume). */
 	private sdkSessionIds = new Map<string, string>();
+	/** Per-session serialization lanes to prevent concurrent execution. */
+	private sessionLanes = new Map<string, Promise<void>>();
 
 	constructor(
 		modelManager?: ModelManager,
@@ -47,12 +50,14 @@ export class AgentRuntime {
 		mediaStore?: MediaStore,
 		leakDetector?: LeakDetector,
 		mcpClientManager?: McpClientManager,
+		usageTracker?: UsageTracker,
 	) {
 		this.modelManager = modelManager ?? new ModelManager();
 		this.approvalManager = approvalManager;
 		this.mediaStore = mediaStore;
 		this.leakDetector = leakDetector;
 		this.mcpClientManager = mcpClientManager;
+		this.usageTracker = usageTracker;
 	}
 
 	/** Generate a short title for a session (fire-and-forget). */
@@ -84,6 +89,41 @@ export class AgentRuntime {
 	}
 
 	async *run(params: {
+		agentId: string;
+		sessionKey: string;
+		message: string;
+		config: Config;
+		isOwner?: boolean;
+		channelId?: string;
+		imageUrls?: string[];
+		signal?: AbortSignal;
+		preference?: Preference;
+	}): AsyncGenerator<AgentEvent> {
+		// Session serialization: wait for any in-flight run on the same session
+		const { sessionKey } = params;
+		const prevLane = this.sessionLanes.get(sessionKey);
+		let releaseLane: (() => void) | undefined;
+		const lanePromise = new Promise<void>((resolve) => {
+			releaseLane = resolve;
+		});
+		this.sessionLanes.set(sessionKey, lanePromise);
+
+		if (prevLane) {
+			await prevLane;
+		}
+
+		try {
+			yield* this._runInternal(params);
+		} finally {
+			releaseLane?.();
+			// Clean up lane if it's still ours
+			if (this.sessionLanes.get(sessionKey) === lanePromise) {
+				this.sessionLanes.delete(sessionKey);
+			}
+		}
+	}
+
+	private async *_runInternal(params: {
 		agentId: string;
 		sessionKey: string;
 		message: string;
@@ -214,9 +254,19 @@ export class AgentRuntime {
 						]
 					: message;
 
-			// Build messages with safety suffix for prompt injection defense
-			const systemPrompt = agentConfig.systemPrompt + memoryContext + SAFETY_SUFFIX;
-			const messages: CoreMessage[] = [
+			// Build system prompt using layered builder
+			const promptMode = agentConfig.bootstrap?.mode ?? "full";
+			const systemPrompt = await buildSystemPrompt({
+				agentId,
+				systemPrompt: agentConfig.systemPrompt,
+				config,
+				mode: promptMode,
+				memoryContext: memoryContext || undefined,
+				channelId,
+				workspaceDir: agentConfig.workspaceDir,
+			});
+
+			let messages: CoreMessage[] = [
 				{ role: "system", content: systemPrompt },
 				...history,
 				{ role: "user", content: userContent },
@@ -255,6 +305,56 @@ export class AgentRuntime {
 				}
 			}
 
+			// LLM-based context compaction: summarize old messages if approaching budget
+			const compactionCfg = config.session.compaction;
+			if (
+				compactionCfg.enabled &&
+				needsCompaction(messages, contextBudget, compactionCfg.triggerRatio)
+			) {
+				console.log(`[agent] Context compaction triggered for session ${sessionKey}`);
+
+				// Resolve compaction model (may differ from chat model)
+				let compactionModel = model;
+				if (compactionCfg.model) {
+					try {
+						compactionModel = this.modelManager.resolveByIdWithMeta(
+							compactionCfg.model,
+							config,
+						).model;
+					} catch {
+						// Fall back to chat model
+					}
+				}
+
+				// Flush important facts to memory before compacting
+				if (compactionCfg.memoryFlush && config.memory.enabled) {
+					const toFlush = messages.slice(1, -(compactionCfg.keepRecentMessages + 1));
+					await flushToMemory({
+						messages: toFlush,
+						model: compactionModel,
+						memoryStore: this.memoryStore,
+						agentId,
+						sessionKey,
+						config,
+					});
+				}
+
+				// Summarize old messages
+				const compaction = await compactMessages({
+					messages,
+					model: compactionModel,
+					keepRecent: compactionCfg.keepRecentMessages,
+					identifierPolicy: compactionCfg.identifierPolicy,
+				});
+
+				if (compaction.compactedCount > 0) {
+					messages = compaction.keptMessages;
+					console.log(
+						`[agent] Compacted ${compaction.compactedCount} messages into summary for session ${sessionKey}`,
+					);
+				}
+			}
+
 			// Create tools filtered by policy + ownerOnly
 			const tools = await createToolset({
 				workspaceDir,
@@ -270,11 +370,13 @@ export class AgentRuntime {
 				approvalManager: this.approvalManager,
 				agentCapabilities: agentConfig.capabilities,
 				mcpClientManager: this.mcpClientManager,
+				sessionStore: this.sessionStore,
 			});
 
 			// Stream execution with failure tracking
 			let fullText = "";
 			let usage: { promptTokens: number; completionTokens: number };
+			const streamStartTime = Date.now();
 
 			try {
 				const result = streamText({
@@ -313,6 +415,30 @@ export class AgentRuntime {
 						}
 
 						case "tool-call": {
+							// Loop detection: check for repetitive tool calls
+							const loopCheck = this.loopDetector.check(sessionKey, part.toolName, part.args);
+							if (loopCheck.action === "circuit_break") {
+								console.error(`[agent] ${loopCheck.reason}`);
+								yield {
+									type: "error",
+									sessionKey,
+									message: loopCheck.reason ?? "Loop circuit breaker triggered",
+								};
+								return;
+							}
+							if (loopCheck.action === "block") {
+								console.warn(`[agent] ${loopCheck.reason}`);
+								yield {
+									type: "error",
+									sessionKey,
+									message: loopCheck.reason ?? "Repetitive tool call blocked",
+								};
+								return;
+							}
+							if (loopCheck.action === "warn") {
+								console.warn(`[agent] ${loopCheck.reason}`);
+							}
+
 							// Data flow heuristic check before tool execution
 							const flowCheck = checkDataFlow(part.toolName, part.args as Record<string, unknown>);
 							if (flowCheck) {
@@ -331,6 +457,9 @@ export class AgentRuntime {
 						}
 
 						case "tool-result": {
+							// Record output for loop stall detection
+							this.loopDetector.recordOutput(sessionKey, part.toolName, part.result);
+
 							// Wrap tool results with boundary markers for injection defense
 							const resultStr =
 								typeof part.result === "string" ? part.result : JSON.stringify(part.result);
@@ -367,6 +496,23 @@ export class AgentRuntime {
 
 				usage = await result.usage;
 				this.modelManager.reportSuccess(provider, profileId);
+
+				// Record usage for cost tracking
+				if (this.usageTracker) {
+					try {
+						this.usageTracker.record({
+							sessionKey,
+							agentId,
+							model: agentConfig.model,
+							provider,
+							inputTokens: usage.promptTokens,
+							outputTokens: usage.completionTokens,
+							durationMs: Date.now() - streamStartTime,
+						});
+					} catch (err) {
+						console.warn("[agent] Failed to record usage:", err);
+					}
+				}
 			} catch (streamErr) {
 				// Check if this was an intentional abort (steering/cancel)
 				if (signal?.aborted) {

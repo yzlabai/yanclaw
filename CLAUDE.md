@@ -4,7 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-YanClaw is an AI agent gateway platform built with Bun + Tauri. It routes messages between chat channels (Telegram, Discord, Slack, WebChat) and AI agents, with a desktop app shell. Documentation is in Chinese (`docs/`).
+YanClaw is an AI agent gateway platform built with Bun + Tauri, positioned as a **practical, security-first alternative to OpenClaw**. It routes messages between chat channels (Telegram, Discord, Slack, WebChat) and AI agents, with a desktop app shell. Documentation is in Chinese (`docs/`).
+
+### vs OpenClaw — Why YanClaw is Better
+
+YanClaw targets the same problem space as OpenClaw (local AI agent ↔ chat channel gateway) but prioritizes **security, reliability, and developer experience** over hype-driven feature sprawl:
+
+| Dimension | OpenClaw | YanClaw |
+|---|---|---|
+| **Security** | Default bind 0.0.0.0, plaintext credentials, no skill sandboxing, 512+ CVEs, ClawHavoc supply-chain attack compromised 9k+ installs | AES-256-GCM Vault, leak detector, SSRF prevention, prompt injection defense, Docker sandbox, capability model, audit logging, anomaly detection |
+| **Runtime** | Node.js (heavy, slow cold start) | Bun (3-5× faster startup, native SQLite, lower memory) |
+| **Type Safety** | Loose JS, runtime errors | Hono RPC + Zod end-to-end type inference, zero-config type-safe API |
+| **Desktop** | No native app, browser-only | Tauri v2 native shell (system tray, global shortcuts, auto-updater, single-instance) |
+| **Plugin Safety** | SKILL.md free-for-all, 820+ malicious skills on ClawHub | TypeScript plugin system with namespaced tools, lifecycle hooks, capability filtering |
+| **Agent Control** | Over-autonomous, ignores approval gates, runaway token usage | 3-layer tool policy (global→agent→channel), ownerOnly enforcement, execution approval flow |
+| **Memory** | Basic context window | FTS5 + embedding hybrid search, auto-indexing, memory preheat |
+| **Model Failover** | Manual provider switch | Multi-profile failover with failure counting, cooldown, auto-recovery |
+| **Config** | YAML/env files | JSON5 + Zod validation + env var expansion + hot reload |
+| **Channel Health** | Crashes silently | Health monitor with exponential backoff auto-reconnect |
+
+**Design philosophy**: OpenClaw optimizes for "wow, 50+ integrations" breadth; YanClaw optimizes for "it actually works and won't leak your API keys" depth. Every feature ships with proper validation, error handling, and security hardening — not as an afterthought patch.
 
 ## Commands
 
@@ -51,7 +70,7 @@ Bun monorepo with workspaces (`packages/*`, `plugins/*`):
 
 ## Server Startup Sequence
 
-`initGateway` → `startPlugins` → `startChannels` → `startCron` → `runSessionCleanup` → `startMemoryIndexer` → hot-reload listener
+`initGateway` → `startMcp` → `startPlugins` → `startChannels` → `startCron` → `startHeartbeats` → `runSessionCleanup` → `startMemoryIndexer` → hot-reload listener
 
 ## Code Style
 

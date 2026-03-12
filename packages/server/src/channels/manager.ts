@@ -18,6 +18,9 @@ export class ChannelManager {
 	private healthTimer: ReturnType<typeof setInterval> | null = null;
 	private reconnectAttempts = new Map<string, number>();
 	sttService?: SttService;
+	onAgentActivity?: (agentId: string, channelId: string) => void;
+	/** Approval responder callback (set from gateway). */
+	onApprovalCommand?: (approvalId: string, decision: "approved" | "denied") => boolean;
 	private agentRunner?: (params: {
 		agentId: string;
 		sessionKey: string;
@@ -167,6 +170,27 @@ export class ChannelManager {
 			return;
 		}
 
+		// 0. Handle approval commands (/approve <id>, /deny <id>)
+		const approvalMatch = msg.text.match(/^\/(approve|deny)\s+(\S+)/i);
+		if (approvalMatch && this.onApprovalCommand) {
+			const isOwner = isOwnerSender(msg, config);
+			if (isOwner) {
+				const decision = approvalMatch[1].toLowerCase() === "approve" ? "approved" : "denied";
+				const approvalId = approvalMatch[2];
+				const handled = this.onApprovalCommand(approvalId, decision as "approved" | "denied");
+				if (handled) {
+					const adapter = this.findAdapter(msg.channel, msg.accountId);
+					if (adapter) {
+						await adapter.send(msg.peer, {
+							text: `Tool execution ${decision}.`,
+							format: "plain",
+						});
+					}
+					return;
+				}
+			}
+		}
+
 		// 1. DM policy check
 		const dmResult = checkDmPolicy(msg, config);
 		if (dmResult === "denied") return;
@@ -190,8 +214,12 @@ export class ChannelManager {
 			peerName: msg.senderName,
 			guildId: msg.peer.guildId,
 			groupId: msg.peer.kind === "group" ? msg.peer.id : undefined,
+			threadId: msg.peer.threadId ?? msg.threadId,
 			roles: msg.memberRoleIds,
 		});
+
+		// 2.5. Notify heartbeat runner of activity
+		this.onAgentActivity?.(route.agentId, msg.channel);
 
 		// 3. Run agent
 		if (!this.agentRunner) {

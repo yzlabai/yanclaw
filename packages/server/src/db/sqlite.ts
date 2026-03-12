@@ -203,6 +203,31 @@ const MIGRATIONS = [
 		name: "session_model_override",
 		sql: `ALTER TABLE sessions ADD COLUMN model_override TEXT;`,
 	},
+	{
+		version: 5,
+		name: "usage_tracking",
+		sql: `
+			CREATE TABLE IF NOT EXISTS usage (
+				id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+				session_key        TEXT NOT NULL,
+				agent_id           TEXT NOT NULL,
+				model              TEXT NOT NULL,
+				provider           TEXT NOT NULL,
+				input_tokens       INTEGER NOT NULL DEFAULT 0,
+				output_tokens      INTEGER NOT NULL DEFAULT 0,
+				cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+				cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+				estimated_cost_usd REAL NOT NULL DEFAULT 0,
+				duration_ms        INTEGER NOT NULL DEFAULT 0,
+				created_at         INTEGER NOT NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_usage_session ON usage(session_key);
+			CREATE INDEX IF NOT EXISTS idx_usage_agent ON usage(agent_id);
+			CREATE INDEX IF NOT EXISTS idx_usage_created ON usage(created_at);
+			CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model);
+		`,
+	},
 ];
 
 export function closeDatabase(): void {

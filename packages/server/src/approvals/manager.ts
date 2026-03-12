@@ -14,8 +14,18 @@ interface PendingApproval {
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
+/** Callback to send approval requests to a chat channel. */
+export type ChannelApprovalNotifier = (params: {
+	approvalId: string;
+	sessionKey: string;
+	toolName: string;
+	args: unknown;
+}) => Promise<void>;
+
 export class ApprovalManager {
 	private pending = new Map<string, PendingApproval>();
+	/** Optional channel notifier for in-channel approval. */
+	channelNotifier?: ChannelApprovalNotifier;
 
 	/**
 	 * Request approval for a tool call.
@@ -58,6 +68,13 @@ export class ApprovalManager {
 				expiresAt: now + timeoutMs,
 			},
 		});
+
+		// Also notify via channel if configured
+		if (this.channelNotifier) {
+			this.channelNotifier({ approvalId: id, sessionKey, toolName, args }).catch((err) => {
+				console.warn("[approval] Channel notification failed:", err);
+			});
+		}
 
 		// Wait for user response or timeout
 		return new Promise<ApprovalDecision>((resolve) => {

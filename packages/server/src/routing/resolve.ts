@@ -10,6 +10,7 @@ export interface RouteContext {
 	peerName?: string; // sender's display name
 	guildId?: string; // discord guild / slack workspace
 	groupId?: string; // telegram group / discord channel
+	threadId?: string; // discord thread / slack thread — auto-binds to per-thread session
 	roles?: string[]; // discord roles
 }
 
@@ -84,6 +85,11 @@ function buildSessionKey(
 	ctx: RouteContext,
 	dmScope: "main" | "per-peer" | "per-channel-peer" | "per-account-peer",
 ): string {
+	// Thread binding: if message is from a thread, auto-bind to per-thread session
+	if (ctx.threadId) {
+		return `agent:${agentId}:thread:${ctx.threadId}`;
+	}
+
 	switch (dmScope) {
 		case "main":
 			return `agent:${agentId}:main`;

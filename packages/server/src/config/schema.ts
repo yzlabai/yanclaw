@@ -66,6 +66,39 @@ const agentSchema = z.object({
 			z.string(), // "researcher" (preset name)
 		])
 		.optional(),
+	bootstrap: z
+		.object({
+			/** Prompt assembly mode. "full" injects all layers, "minimal" for cron/heartbeat, "none" for raw. */
+			mode: z.enum(["full", "minimal", "none"]).default("full"),
+			/** Bootstrap file names to load from workspace/data dir. */
+			files: z.array(z.string()).default(["SOUL.md", "TOOLS.md", "MEMORY.md", "CONTEXT.md"]),
+			/** Max characters per bootstrap file. */
+			maxFileChars: z.number().default(20_000),
+		})
+		.optional(),
+	heartbeat: z
+		.object({
+			enabled: z.boolean().default(false),
+			/** Interval between heartbeats (e.g. "5m", "1h"). */
+			interval: z.string().default("30m"),
+			/** Path to HEARTBEAT.md file with task prompt. */
+			promptFile: z.string().optional(),
+			/** Inline prompt (used when promptFile is not set). */
+			prompt: z.string().optional(),
+			/** Active hours constraint. */
+			activeHours: z
+				.object({
+					start: z.number().min(0).max(23).default(9),
+					end: z.number().min(0).max(23).default(22),
+					timezone: z.string().default("Asia/Shanghai"),
+				})
+				.optional(),
+			/** Where to deliver heartbeat output. "none" suppresses, "last" sends to last active channel. */
+			target: z.enum(["none", "last"]).or(z.string()).default("none"),
+			/** Suppress no-op responses like "HEARTBEAT_OK". */
+			suppressOk: z.boolean().default(true),
+		})
+		.default({}),
 	runtime: z.enum(["default", "claude-code"]).default("default"),
 	claudeCode: z
 		.object({
@@ -162,6 +195,26 @@ const toolsSchema = z
 						readOnlyWorkspace: z.boolean().default(false),
 					})
 					.default({}),
+			})
+			.default({}),
+		codeExec: z
+			.object({
+				enabled: z.boolean().default(false),
+				runtime: z.enum(["bun-secure", "docker", "bun-limited"]).default("bun-secure"),
+				fallback: z.enum(["docker", "bun-limited", "off"]).default("bun-limited"),
+				permissions: z
+					.object({
+						net: z.union([z.boolean(), z.array(z.string())]).default(false),
+						read: z.union([z.boolean(), z.array(z.string())]).default(["./workspace"]),
+						write: z.union([z.boolean(), z.array(z.string())]).default(false),
+						env: z.union([z.boolean(), z.array(z.string())]).default(["NODE_ENV"]),
+						run: z.boolean().default(false),
+						sys: z.boolean().default(false),
+						ffi: z.literal(false).default(false),
+					})
+					.default({}),
+				timeoutMs: z.number().default(30_000),
+				maxOutputChars: z.number().default(50_000),
 			})
 			.default({}),
 		byChannel: z
@@ -263,6 +316,32 @@ export const configSchema = z.object({
 		.object({
 			contextBudget: z.number().default(100_000),
 			pruneAfterDays: z.number().default(90),
+			compaction: z
+				.object({
+					enabled: z.boolean().default(true),
+					/** Model for summarization. null = use current agent's model. */
+					model: z.string().nullable().default(null),
+					/** Context window usage ratio to trigger compaction. */
+					triggerRatio: z.number().min(0.5).max(0.99).default(0.85),
+					/** Keep this many recent messages intact (not summarized). */
+					keepRecentMessages: z.number().min(2).default(10),
+					/** Preserve identifiers (UUIDs, hashes, etc.) in summaries. */
+					identifierPolicy: z.enum(["strict", "off"]).default("strict"),
+					/** Flush important facts to memory before compaction. */
+					memoryFlush: z.boolean().default(true),
+				})
+				.default({}),
+			autoReset: z
+				.object({
+					enabled: z.boolean().default(false),
+					/** Reset sessions idle for this long (e.g. "8h", "1d"). */
+					idleTimeout: z.string().default("8h"),
+					/** Daily reset time in HH:MM format (null = disabled). */
+					dailyResetTime: z.string().nullable().default(null),
+					/** Timezone for daily reset. */
+					timezone: z.string().default("Asia/Shanghai"),
+				})
+				.default({}),
 		})
 		.default({}),
 

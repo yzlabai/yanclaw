@@ -18,6 +18,7 @@ import { modelsRoute } from "./routes/models";
 import { pluginsRoute } from "./routes/plugins";
 import { sessionsRoute } from "./routes/sessions";
 import { systemRoute } from "./routes/system";
+import { usageRoute } from "./routes/usage";
 import { wsRoute } from "./routes/ws";
 
 const app = new Hono()
@@ -56,6 +57,7 @@ const apiRoutes = app
 	.route("/plugins", pluginsRoute)
 	.route("/system", systemRoute)
 	.route("/audit", auditRoute)
+	.route("/usage", usageRoute)
 	.route("/ws", wsRoute);
 
 export type AppType = typeof apiRoutes;

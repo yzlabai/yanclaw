@@ -7,6 +7,7 @@ import {
 	runSessionCleanup,
 	startChannels,
 	startCron,
+	startHeartbeats,
 	startMcp,
 	startMemoryIndexer,
 	startPlugins,
@@ -49,6 +50,9 @@ async function main() {
 
 	// 8. Start cron scheduler
 	startCron(gw);
+
+	// 8.5. Start heartbeats
+	startHeartbeats(gw);
 
 	// 9. Session/media cleanup
 	runSessionCleanup(gw);

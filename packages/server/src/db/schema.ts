@@ -1,4 +1,4 @@
-import { blob, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const sessions = sqliteTable(
 	"sessions",
@@ -90,6 +90,30 @@ export const auditLogs = sqliteTable(
 	(table) => [
 		index("idx_audit_timestamp").on(table.timestamp),
 		index("idx_audit_action").on(table.action),
+	],
+);
+
+export const usage = sqliteTable(
+	"usage",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		sessionKey: text("session_key").notNull(),
+		agentId: text("agent_id").notNull(),
+		model: text("model").notNull(),
+		provider: text("provider").notNull(),
+		inputTokens: integer("input_tokens").default(0).notNull(),
+		outputTokens: integer("output_tokens").default(0).notNull(),
+		cacheReadTokens: integer("cache_read_tokens").default(0).notNull(),
+		cacheWriteTokens: integer("cache_write_tokens").default(0).notNull(),
+		estimatedCostUsd: real("estimated_cost_usd").default(0).notNull(),
+		durationMs: integer("duration_ms").default(0).notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [
+		index("idx_usage_session").on(table.sessionKey),
+		index("idx_usage_agent").on(table.agentId),
+		index("idx_usage_created").on(table.createdAt),
+		index("idx_usage_model").on(table.model),
 	],
 );
 

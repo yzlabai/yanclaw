@@ -1,5 +1,6 @@
 import { ModelManager } from "./agents/model-manager";
 import { AgentRuntime } from "./agents/runtime";
+import { UsageTracker } from "./agents/usage-tracker";
 import { ApprovalManager } from "./approvals";
 import { ChannelManager } from "./channels/manager";
 import { channelRegistry } from "./channels/registry";
@@ -10,6 +11,7 @@ import "./channels/slack";
 import "./channels/telegram";
 import type { ConfigStore } from "./config";
 import { CronService } from "./cron";
+import { HeartbeatRunner } from "./cron/heartbeat";
 import { MemoryStore } from "./db/memories";
 import { SessionStore } from "./db/sessions";
 import { getRawDatabase } from "./db/sqlite";
@@ -41,6 +43,8 @@ export interface GatewayContext {
 	auditLogger: AuditLogger | null;
 	anomalyDetector: AnomalyDetector;
 	tokenRotation: TokenRotation | null;
+	usageTracker: UsageTracker;
+	heartbeatRunner: HeartbeatRunner;
 }
 
 let ctx: GatewayContext | null = null;
@@ -52,6 +56,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 	const mediaStore = new MediaStore();
 	const leakDetector = new LeakDetector();
 	const anomalyDetector = new AnomalyDetector();
+	const usageTracker = new UsageTracker();
 
 	// Initialize audit logger with raw SQLite database
 	let auditLogger: AuditLogger | null = null;
@@ -70,6 +75,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		mediaStore,
 		leakDetector,
 		mcpClientManager,
+		usageTracker,
 	);
 	const channelManager = new ChannelManager();
 	channelManager.sttService = sttService;
@@ -105,6 +111,16 @@ export function initGateway(config: ConfigStore): GatewayContext {
 	cronService.setConfigGetter(() => config.get());
 	cronService.setAgentRunner((params) => agentRuntime.run(params));
 
+	// Wire up heartbeat runner
+	const heartbeatRunner = new HeartbeatRunner(() => config.get());
+	heartbeatRunner.setAgentRunner((params) => agentRuntime.run(params));
+	channelManager.onAgentActivity = (agentId, channelId) => {
+		heartbeatRunner.recordActivity(agentId, channelId);
+	};
+	channelManager.onApprovalCommand = (approvalId, decision) => {
+		return approvalManager.respond(approvalId, decision);
+	};
+
 	ctx = {
 		config,
 		sessions: new SessionStore(),
@@ -121,6 +137,8 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		auditLogger,
 		anomalyDetector,
 		tokenRotation,
+		usageTracker,
+		heartbeatRunner,
 	};
 
 	return ctx;
@@ -199,8 +217,37 @@ export function startCron(gw: GatewayContext): void {
 	});
 }
 
+/** Start heartbeat runners for agents that have heartbeat enabled. */
+export function startHeartbeats(gw: GatewayContext): void {
+	const cfg = gw.config.get();
+	const heartbeatAgents = cfg.agents.filter((a) => a.heartbeat?.enabled);
+	if (heartbeatAgents.length === 0) return;
+
+	gw.heartbeatRunner.start();
+	console.log(`[gateway] Heartbeat started for ${heartbeatAgents.length} agent(s)`);
+
+	// Refresh on config reload
+	gw.config.onChange(() => {
+		gw.heartbeatRunner.refresh();
+	});
+}
+
+/** Track auto-reset timers for cleanup on config reload. */
+const autoResetTimers: ReturnType<typeof setInterval | typeof setTimeout>[] = [];
+
+/** Clear all auto-reset timers (called before re-scheduling). */
+function clearAutoResetTimers(): void {
+	for (const timer of autoResetTimers) {
+		clearInterval(timer);
+		clearTimeout(timer);
+	}
+	autoResetTimers.length = 0;
+}
+
 /** Run session cleanup on startup. */
 export function runSessionCleanup(gw: GatewayContext): void {
+	// Clear previous timers if re-running (hot reload)
+	clearAutoResetTimers();
 	const cfg = gw.config.get();
 	const days = cfg.session.pruneAfterDays;
 	if (days > 0) {
@@ -219,6 +266,109 @@ export function runSessionCleanup(gw: GatewayContext): void {
 			console.log(`[gateway] Pruned ${pruned} audit log entries`);
 		}
 	}
+
+	// Prune old usage records
+	const usagePruned = gw.usageTracker.prune(days);
+	if (usagePruned > 0) {
+		console.log(`[gateway] Pruned ${usagePruned} usage records`);
+	}
+
+	// Session auto-reset
+	const autoReset = cfg.session.autoReset;
+	if (autoReset?.enabled) {
+		// Idle timeout reset on startup
+		const idleMs = parseDurationMs(autoReset.idleTimeout);
+		if (idleMs) {
+			const resetCount = gw.sessions.resetIdle(idleMs);
+			if (resetCount > 0) {
+				console.log(`[gateway] Auto-reset ${resetCount} idle session(s)`);
+			}
+		}
+
+		// Schedule periodic idle check (every 30 minutes)
+		const idleCheckTimer = setInterval(() => {
+			const ms = parseDurationMs(autoReset.idleTimeout);
+			if (ms) {
+				const count = gw.sessions.resetIdle(ms);
+				if (count > 0) {
+					console.log(`[gateway] Auto-reset ${count} idle session(s)`);
+				}
+			}
+		}, 30 * 60_000);
+		autoResetTimers.push(idleCheckTimer);
+
+		// Daily reset timer
+		if (autoReset.dailyResetTime) {
+			scheduleDailyReset(gw, autoReset.dailyResetTime, autoReset.timezone);
+		}
+	}
+}
+
+/** Parse duration string to milliseconds. */
+function parseDurationMs(s: string): number | null {
+	const match = s.match(/^(\d+(?:\.\d+)?)\s*(s|sec|m|min|h|hr|d|day)s?$/i);
+	if (!match) return null;
+	const value = Number.parseFloat(match[1]);
+	const unit = match[2].toLowerCase();
+	const multipliers: Record<string, number> = {
+		s: 1000,
+		sec: 1000,
+		m: 60_000,
+		min: 60_000,
+		h: 3_600_000,
+		hr: 3_600_000,
+		d: 86_400_000,
+		day: 86_400_000,
+	};
+	return value * (multipliers[unit] ?? 0) || null;
+}
+
+/** Schedule a daily session reset at a specific time. */
+function scheduleDailyReset(gw: GatewayContext, timeStr: string, timezone: string): void {
+	const [hours, minutes] = timeStr.split(":").map(Number);
+	if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+		console.warn(`[gateway] Invalid dailyResetTime: ${timeStr}`);
+		return;
+	}
+
+	const scheduleNext = () => {
+		const now = new Date();
+		// Get current time in target timezone
+		const formatter = new Intl.DateTimeFormat("en-US", {
+			timeZone: timezone,
+			hour: "numeric",
+			minute: "numeric",
+			hour12: false,
+		});
+		const parts = formatter.formatToParts(now);
+		const currentHour = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+		const currentMinute = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+
+		let msUntilReset = (hours - currentHour) * 3_600_000 + (minutes - currentMinute) * 60_000;
+		if (msUntilReset <= 60_000) {
+			// Less than 1 minute away or already past — schedule for next day
+			msUntilReset += 24 * 3_600_000;
+		}
+
+		const timer = setTimeout(() => {
+			const cfg = gw.config.get();
+			if (cfg.session.autoReset?.enabled) {
+				// Reset all sessions with messages
+				const resetCount = gw.sessions.resetIdle(0); // 0ms = reset all with messages
+				if (resetCount > 0) {
+					console.log(`[gateway] Daily reset: cleared ${resetCount} session(s)`);
+				}
+			}
+			scheduleNext(); // Schedule next day
+		}, msUntilReset);
+		autoResetTimers.push(timer);
+
+		console.log(
+			`[gateway] Daily session reset scheduled at ${timeStr} (${timezone}), next in ${Math.round(msUntilReset / 60_000)}m`,
+		);
+	};
+
+	scheduleNext();
 }
 
 /** Start memory auto-indexer if configured. */
