@@ -1,5 +1,6 @@
 import type { Config, Preference } from "../config/schema";
 import type { SttService } from "../media/stt";
+import type { PluginRegistry } from "../plugins/registry";
 import { resolveIdentity, resolveRoute } from "../routing/resolve";
 import { checkDmPolicy, isOwnerSender } from "./dm-policy";
 import { CHANNEL_DOCK } from "./dock";
@@ -18,6 +19,7 @@ export class ChannelManager {
 	private healthTimer: ReturnType<typeof setInterval> | null = null;
 	private reconnectAttempts = new Map<string, number>();
 	sttService?: SttService;
+	pluginRegistry?: PluginRegistry;
 	onAgentActivity?: (agentId: string, channelId: string) => void;
 	/** Approval responder callback (set from gateway). */
 	onApprovalCommand?: (approvalId: string, decision: "approved" | "denied") => boolean;
@@ -188,6 +190,15 @@ export class ChannelManager {
 					}
 					return;
 				}
+			}
+		}
+
+		// 0.5. Plugin onMessageInbound hooks
+		if (this.pluginRegistry) {
+			const filtered = await this.pluginRegistry.runMessageInbound(msg);
+			if (filtered === null) {
+				console.log("[channel] Message dropped by plugin hook");
+				return;
 			}
 		}
 

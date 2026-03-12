@@ -7,6 +7,7 @@ import {
 	PanelLeftClose,
 	PanelLeftOpen,
 	Plug,
+	Puzzle,
 	Radio,
 	Settings as SettingsIcon,
 	X,
@@ -34,6 +35,7 @@ import { McpServers } from "./pages/McpServers";
 import { Onboarding } from "./pages/Onboarding";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
+import { Skills } from "./pages/Skills";
 
 function SetupGuard({ children }: { children: React.ReactNode }) {
 	const location = useLocation();
@@ -91,6 +93,7 @@ const NAV_ITEMS = [
 	{ to: "/sessions", label: "会话", icon: History },
 	{ to: "/agents", label: "Agent", icon: Bot },
 	{ to: "/channels", label: "频道", icon: Radio },
+	{ to: "/skills", label: "Skills", icon: Puzzle },
 	{ to: "/mcp", label: "MCP", icon: Plug },
 	{ to: "/cron", label: "定时任务", icon: Clock },
 	{ to: "/settings", label: "设置", icon: SettingsIcon },
@@ -259,6 +262,7 @@ function AppLayout() {
 						<Route path="/mcp" element={<McpServers />} />
 						<Route path="/cron" element={<Cron />} />
 						<Route path="/agents" element={<Agents />} />
+						<Route path="/skills" element={<Skills />} />
 						<Route path="/settings" element={<Settings />} />
 						<Route path="/onboarding" element={<Onboarding />} />
 					</Routes>

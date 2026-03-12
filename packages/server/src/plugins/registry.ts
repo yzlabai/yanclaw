@@ -1,4 +1,5 @@
 import { channelRegistry } from "../channels/registry";
+import type { SkillDefinition } from "./skill-loader";
 import type { PluginChannelFactory, PluginDefinition, PluginHooks, PluginToolDef } from "./types";
 
 /** Central registry for all loaded plugins. */
@@ -96,6 +97,38 @@ export class PluginRegistry {
 	/** Get all plugin-provided tools as a flat map. */
 	getTools(): Map<string, PluginToolDef> {
 		return this.toolMap;
+	}
+
+	/** Get capability requirements for each plugin tool (keyed by qualified name). */
+	getToolCapabilities(): Map<string, string[]> {
+		const caps = new Map<string, string[]>();
+		for (const plugin of this.plugins.values()) {
+			if (!plugin.tools || !plugin.capabilities) continue;
+			for (const t of plugin.tools) {
+				caps.set(`${plugin.id}.${t.name}`, plugin.capabilities);
+			}
+		}
+		return caps;
+	}
+
+	/** Check if a plugin tool is owner-only. */
+	isOwnerOnlyTool(qualifiedName: string): boolean {
+		const dotIdx = qualifiedName.indexOf(".");
+		if (dotIdx < 0) return false;
+		const pluginId = qualifiedName.slice(0, dotIdx);
+		const plugin = this.plugins.get(pluginId);
+		return plugin?.ownerOnly ?? false;
+	}
+
+	/** Get sanitized prompts from all loaded skills (for system prompt injection). */
+	getSkillPrompts(): string[] {
+		const prompts: string[] = [];
+		for (const plugin of this.plugins.values()) {
+			const skill = plugin as SkillDefinition;
+			if (!skill.sanitizedPrompt) continue;
+			prompts.push(skill.sanitizedPrompt);
+		}
+		return prompts;
 	}
 
 	/** Get channel factory by type name. */

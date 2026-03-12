@@ -69,6 +69,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 
 	setEmbeddingModelManager(modelManager);
 	const sttService = new SttService(modelManager);
+	const pluginRegistry = new PluginRegistry();
 	const agentRuntime = new AgentRuntime(
 		modelManager,
 		approvalManager,
@@ -76,11 +77,12 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		leakDetector,
 		mcpClientManager,
 		usageTracker,
+		pluginRegistry,
 	);
 	const channelManager = new ChannelManager();
 	channelManager.sttService = sttService;
+	channelManager.pluginRegistry = pluginRegistry;
 	const cronService = new CronService();
-	const pluginRegistry = new PluginRegistry();
 
 	// Initialize token rotation if configured
 	const securityCfg = config.get().security;

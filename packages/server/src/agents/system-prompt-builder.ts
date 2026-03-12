@@ -32,6 +32,8 @@ export interface PromptContext {
 	modelName?: string;
 	/** Agent workspace directory. */
 	workspaceDir?: string;
+	/** Sanitized skill prompts to inject (already wrapped in boundary markers). */
+	skillPrompts?: string[];
 }
 
 const BOOTSTRAP_FILES = ["SOUL.md", "TOOLS.md", "MEMORY.md", "CONTEXT.md"];
@@ -65,6 +67,11 @@ export async function buildSystemPrompt(ctx: PromptContext): Promise<string> {
 		if (bootstrap) {
 			sections.push(bootstrap);
 		}
+	}
+
+	// 3.5. Skill prompts (sanitized, boundary-marked)
+	if (ctx.skillPrompts && ctx.skillPrompts.length > 0) {
+		sections.push(`## Available Skills\n\n${ctx.skillPrompts.join("\n\n")}`);
 	}
 
 	// 4. Memory context

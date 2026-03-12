@@ -4,6 +4,7 @@ import type { Config, ToolsConfig } from "../../config/schema";
 import type { MemoryStore } from "../../db/memories";
 import type { SessionStore } from "../../db/sessions";
 import type { McpClientManager } from "../../mcp/client";
+import type { PluginRegistry } from "../../plugins/registry";
 import {
 	createBrowserActionTool,
 	createBrowserNavigateTool,
@@ -120,9 +121,13 @@ function resolveCapabilities(caps: string | string[] | undefined): Set<string> |
 	return new Set(caps);
 }
 
-function hasCapabilities(toolName: string, granted: Set<string>): boolean {
+function hasCapabilities(
+	toolName: string,
+	granted: Set<string>,
+	extraCaps?: Map<string, string[]>,
+): boolean {
 	if (granted.has("*")) return true;
-	const required = TOOL_CAPABILITIES[toolName] ?? [];
+	const required = TOOL_CAPABILITIES[toolName] ?? extraCaps?.get(toolName) ?? [];
 	return required.every((cap) => granted.has(cap));
 }
 
@@ -185,6 +190,7 @@ export async function createToolset(opts: {
 	agentCapabilities?: string | string[];
 	mcpClientManager?: McpClientManager;
 	sessionStore?: SessionStore;
+	pluginRegistry?: PluginRegistry;
 }) {
 	const { workspaceDir, toolsConfig, agentTools, channelId, isOwner = true } = opts;
 	const timeout = toolsConfig.exec.timeout;
@@ -268,17 +274,31 @@ export async function createToolset(opts: {
 		}
 	}
 
+	// Plugin tools — bridge from PluginRegistry into the toolset
+	let pluginToolCaps: Map<string, string[]> | undefined;
+	if (opts.pluginRegistry) {
+		pluginToolCaps = opts.pluginRegistry.getToolCapabilities();
+		for (const [qualifiedName, pluginTool] of opts.pluginRegistry.getTools()) {
+			allTools[qualifiedName] = tool({
+				description: pluginTool.description,
+				parameters: pluginTool.parameters,
+				execute: async (input) => pluginTool.execute(input),
+			}) as ReturnType<typeof createShellTool>;
+		}
+	}
+
 	// Resolve capability constraints
 	const grantedCaps = resolveCapabilities(opts.agentCapabilities);
 
 	// Filter by policy + ownerOnly + capabilities
 	const tools: Record<string, ReturnType<typeof createShellTool>> = {};
 	for (const [name, t] of Object.entries(allTools)) {
-		// Non-owners cannot use ownerOnly tools
+		// Non-owners cannot use ownerOnly tools (built-in or plugin)
 		if (!isOwner && isOwnerOnlyTool(name)) continue;
+		if (!isOwner && opts.pluginRegistry?.isOwnerOnlyTool(name)) continue;
 		if (!isToolAllowed(name, toolsConfig, agentTools, channelId)) continue;
-		// Capability-based filtering
-		if (grantedCaps && !hasCapabilities(name, grantedCaps)) continue;
+		// Capability-based filtering (check both built-in and plugin caps)
+		if (grantedCaps && !hasCapabilities(name, grantedCaps, pluginToolCaps)) continue;
 		tools[name] = t;
 	}
 

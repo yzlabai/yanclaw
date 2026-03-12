@@ -17,6 +17,7 @@ import { messagesRoute } from "./routes/messages";
 import { modelsRoute } from "./routes/models";
 import { pluginsRoute } from "./routes/plugins";
 import { sessionsRoute } from "./routes/sessions";
+import { skillsRoute } from "./routes/skills";
 import { systemRoute } from "./routes/system";
 import { usageRoute } from "./routes/usage";
 import { wsRoute } from "./routes/ws";
@@ -55,6 +56,7 @@ const apiRoutes = app
 	.route("/messages", messagesRoute)
 	.route("/models", modelsRoute)
 	.route("/plugins", pluginsRoute)
+	.route("/skills", skillsRoute)
 	.route("/system", systemRoute)
 	.route("/audit", auditRoute)
 	.route("/usage", usageRoute)

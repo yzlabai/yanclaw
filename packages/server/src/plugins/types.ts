@@ -41,6 +41,10 @@ export interface PluginDefinition {
 	version: string;
 	/** Run plugin tools in an isolated Worker thread. */
 	isolated?: boolean;
+	/** Capability requirements for this plugin's tools (e.g. ["net:http", "fs:read"]). */
+	capabilities?: string[];
+	/** Whether tools are restricted to owner only. */
+	ownerOnly?: boolean;
 	tools?: PluginToolDef[];
 	channels?: PluginChannelFactory[];
 	hooks?: PluginHooks;

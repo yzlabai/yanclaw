@@ -9,6 +9,7 @@ import { SessionStore } from "../db/sessions";
 import type { McpClientManager } from "../mcp/client";
 import type { MediaStore } from "../media";
 import { generateEmbedding } from "../memory/embeddings";
+import type { PluginRegistry } from "../plugins/registry";
 import type { LeakDetector } from "../security/leak-detector";
 import { checkDataFlow, detectInjection, wrapUntrustedContent } from "../security/sanitize";
 import { runClaudeCode } from "./claude-code-runtime";
@@ -38,6 +39,7 @@ export class AgentRuntime {
 	private leakDetector?: LeakDetector;
 	private mcpClientManager?: McpClientManager;
 	private usageTracker?: UsageTracker;
+	private pluginRegistry?: PluginRegistry;
 	private loopDetector = new LoopDetector();
 	/** Maps YanClaw sessionKey → Agent SDK session ID (for resume). */
 	private sdkSessionIds = new Map<string, string>();
@@ -51,6 +53,7 @@ export class AgentRuntime {
 		leakDetector?: LeakDetector,
 		mcpClientManager?: McpClientManager,
 		usageTracker?: UsageTracker,
+		pluginRegistry?: PluginRegistry,
 	) {
 		this.modelManager = modelManager ?? new ModelManager();
 		this.approvalManager = approvalManager;
@@ -58,6 +61,7 @@ export class AgentRuntime {
 		this.leakDetector = leakDetector;
 		this.mcpClientManager = mcpClientManager;
 		this.usageTracker = usageTracker;
+		this.pluginRegistry = pluginRegistry;
 	}
 
 	/** Generate a short title for a session (fire-and-forget). */
@@ -256,6 +260,7 @@ export class AgentRuntime {
 
 			// Build system prompt using layered builder
 			const promptMode = agentConfig.bootstrap?.mode ?? "full";
+			const skillPrompts = this.pluginRegistry?.getSkillPrompts();
 			const systemPrompt = await buildSystemPrompt({
 				agentId,
 				systemPrompt: agentConfig.systemPrompt,
@@ -264,6 +269,7 @@ export class AgentRuntime {
 				memoryContext: memoryContext || undefined,
 				channelId,
 				workspaceDir: agentConfig.workspaceDir,
+				skillPrompts: skillPrompts?.length ? skillPrompts : undefined,
 			});
 
 			let messages: CoreMessage[] = [
@@ -371,6 +377,7 @@ export class AgentRuntime {
 				agentCapabilities: agentConfig.capabilities,
 				mcpClientManager: this.mcpClientManager,
 				sessionStore: this.sessionStore,
+				pluginRegistry: this.pluginRegistry,
 			});
 
 			// Stream execution with failure tracking
@@ -447,6 +454,25 @@ export class AgentRuntime {
 								);
 							}
 
+							// Plugin beforeToolCall hooks
+							if (this.pluginRegistry) {
+								const hookResult = await this.pluginRegistry.runBeforeToolCall({
+									name: part.toolName,
+									input: part.args,
+								});
+								if (hookResult === null) {
+									console.warn(`[plugins] Tool call "${part.toolName}" blocked by plugin hook`);
+									yield {
+										type: "tool_result",
+										sessionKey,
+										name: part.toolName,
+										result: "Tool execution blocked by plugin.",
+										duration: 0,
+									};
+									break;
+								}
+							}
+
 							yield {
 								type: "tool_call",
 								sessionKey,
@@ -470,6 +496,14 @@ export class AgentRuntime {
 							if (injection.detected) {
 								console.warn(
 									`[security] Injection pattern detected in ${part.toolName} result for session ${sessionKey}: ${injection.patterns.join(", ")}`,
+								);
+							}
+
+							// Plugin afterToolCall hooks
+							if (this.pluginRegistry) {
+								await this.pluginRegistry.runAfterToolCall(
+									{ name: part.toolName, input: part.args },
+									part.result,
 								);
 							}
 

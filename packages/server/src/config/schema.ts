@@ -358,6 +358,16 @@ export const configSchema = z.object({
 		.object({
 			enabled: z.record(z.boolean()).default({}),
 			dirs: z.array(z.string()).default([]),
+			/** Skill-specific configuration. */
+			skills: z
+				.record(
+					z.object({
+						enabled: z.boolean().default(true),
+						config: z.record(z.unknown()).default({}),
+						agents: z.array(z.string()).default([]),
+					}),
+				)
+				.default({}),
 		})
 		.default({}),
 

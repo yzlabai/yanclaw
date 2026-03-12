@@ -2,20 +2,30 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveDataDir } from "../config/store";
 import type { PluginRegistry } from "./registry";
+import { SkillLoader } from "./skill-loader";
 import type { PluginDefinition } from "./types";
 import { isolatePlugin, type PluginWorkerHost } from "./worker-host";
+
+export interface SkillConfig {
+	enabled: boolean;
+	config: Record<string, unknown>;
+	agents: string[];
+}
 
 export interface PluginConfig {
 	/** Plugin ID → enabled status. Defaults to true if not listed. */
 	enabled: Record<string, boolean>;
 	/** Additional directories to scan for plugins. */
 	dirs: string[];
+	/** Skill-specific configuration. */
+	skills?: Record<string, SkillConfig>;
 }
 
 /** Discover and load plugins into the registry. */
 export class PluginLoader {
 	private registry: PluginRegistry;
 	private workerHosts: PluginWorkerHost[] = [];
+	private skillLoader = new SkillLoader();
 
 	constructor(registry: PluginRegistry) {
 		this.registry = registry;
@@ -31,16 +41,22 @@ export class PluginLoader {
 
 	/** Scan directories and load discovered plugins. */
 	async loadAll(config: PluginConfig): Promise<void> {
-		const defaultPluginsDir = join(resolveDataDir(), "plugins");
-		const dirs = [defaultPluginsDir, ...config.dirs];
+		const dataDir = resolveDataDir();
+		const defaultPluginsDir = join(dataDir, "plugins");
+		const skillsDir = join(dataDir, "skills");
+		const dirs = [defaultPluginsDir, skillsDir, ...config.dirs];
 
 		for (const dir of dirs) {
-			await this.scanDirectory(dir, config.enabled);
+			await this.scanDirectory(dir, config.enabled, config.skills);
 		}
 	}
 
 	/** Scan a single directory for plugin subdirectories. */
-	private async scanDirectory(dir: string, enabled: Record<string, boolean>): Promise<void> {
+	private async scanDirectory(
+		dir: string,
+		enabled: Record<string, boolean>,
+		skills?: Record<string, SkillConfig>,
+	): Promise<void> {
 		let entries: string[];
 		try {
 			entries = await readdir(dir);
@@ -55,7 +71,7 @@ export class PluginLoader {
 				const info = await stat(pluginPath);
 				if (!info.isDirectory()) continue;
 
-				await this.loadPlugin(pluginPath, enabled);
+				await this.loadPlugin(pluginPath, enabled, skills);
 			} catch (err) {
 				console.error(`[plugins] Failed to inspect "${entry}":`, err);
 			}
@@ -63,9 +79,34 @@ export class PluginLoader {
 	}
 
 	/** Load a single plugin from its directory. */
-	private async loadPlugin(pluginPath: string, enabled: Record<string, boolean>): Promise<void> {
+	private async loadPlugin(
+		pluginPath: string,
+		enabled: Record<string, boolean>,
+		skills?: Record<string, SkillConfig>,
+	): Promise<void> {
 		try {
-			// Try to import the plugin's entry point
+			// Try skill.json first (enhanced format with metadata + prompt)
+			const skillDef = await this.skillLoader.loadSkill(pluginPath);
+			if (skillDef) {
+				// Check if skill is disabled (check both plugins.enabled and plugins.skills)
+				const skillCfg = skills?.[skillDef.id];
+				if (enabled[skillDef.id] === false || skillCfg?.enabled === false) {
+					console.log(`[skill] "${skillDef.name}" is disabled, skipping`);
+					return;
+				}
+
+				if (skillDef.isolated && skillDef.tools && skillDef.tools.length > 0) {
+					const entryPath = join(pluginPath, skillDef.manifest.main);
+					const { definition, host } = isolatePlugin(skillDef, entryPath);
+					this.workerHosts.push(host);
+					this.registry.register(definition);
+				} else {
+					this.registry.register(skillDef);
+				}
+				return;
+			}
+
+			// Fallback: legacy plugin loading (no skill.json)
 			const entryPath = await this.resolveEntry(pluginPath);
 			if (!entryPath) {
 				console.warn(`[plugins] No entry point found in ${pluginPath}`);
