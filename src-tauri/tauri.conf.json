@@ -24,11 +24,6 @@
 				"visible": true
 			}
 		],
-		"trayIcon": {
-			"iconPath": "icons/icon.png",
-			"iconAsTemplate": true,
-			"tooltip": "YanClaw"
-		},
 		"security": {
 			"csp": null
 		}

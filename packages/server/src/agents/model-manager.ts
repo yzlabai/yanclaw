@@ -79,7 +79,11 @@ export class ModelManager {
 	resolveEmbedding(config: Config, modelId?: string): EmbeddingModel<string> {
 		const id = modelId ?? this.resolveModelId("embedding", "default", config);
 		const lookup = this.findProvider(id, config);
-		const profile = this.selectProfile(lookup.providerName, lookup.providerConfig.profiles);
+		const profile = this.selectProfile(
+			lookup.providerName,
+			lookup.providerConfig.profiles,
+			lookup.providerConfig.type,
+		);
 		const baseUrl = profile.baseUrl ?? lookup.providerConfig.baseUrl;
 
 		switch (lookup.providerConfig.type) {
@@ -153,7 +157,11 @@ export class ModelManager {
 		config: Config,
 	): { providerConfig: ProviderConfig; profile: AuthProfile } {
 		const lookup = this.findProvider(modelId, config);
-		const profile = this.selectProfile(lookup.providerName, lookup.providerConfig.profiles);
+		const profile = this.selectProfile(
+			lookup.providerName,
+			lookup.providerConfig.profiles,
+			lookup.providerConfig.type,
+		);
 		return { providerConfig: lookup.providerConfig, profile };
 	}
 
@@ -178,7 +186,11 @@ export class ModelManager {
 
 	private resolveByModelId(modelId: string, config: Config): ResolveResult {
 		const lookup = this.findProvider(modelId, config);
-		const profile = this.selectProfile(lookup.providerName, lookup.providerConfig.profiles);
+		const profile = this.selectProfile(
+			lookup.providerName,
+			lookup.providerConfig.profiles,
+			lookup.providerConfig.type,
+		);
 
 		return {
 			model: this.createModel(lookup.providerConfig, profile, lookup.resolvedModelId),
@@ -267,8 +279,16 @@ export class ModelManager {
 		}
 	}
 
-	private selectProfile(providerName: string, profiles: AuthProfile[]): AuthProfile {
+	private selectProfile(
+		providerName: string,
+		profiles: AuthProfile[],
+		providerType?: string,
+	): AuthProfile {
 		if (profiles.length === 0) {
+			// Ollama doesn't require API keys — return a synthetic profile
+			if (providerType === "ollama") {
+				return { id: "default", apiKey: "ollama" };
+			}
 			throw new Error(`No auth profiles configured for provider "${providerName}"`);
 		}
 

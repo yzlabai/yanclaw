@@ -2,7 +2,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::{TrayIconBuilder, TrayIconEvent},
+    image::Image,
+    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, State,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
@@ -80,10 +81,14 @@ async fn start_gateway(state: State<'_, GatewayState>) -> Result<(), String> {
     let stderr_file = stdout_file.try_clone()
         .map_err(|e| format!("Failed to clone log file: {}", e))?;
 
-    let child = tokio::process::Command::new(&cmd)
-        .args(&args)
-        .stdout(stdout_file)
-        .stderr(stderr_file)
+    let mut command = tokio::process::Command::new(&cmd);
+    command.args(&args).stdout(stdout_file).stderr(stderr_file);
+
+    // Hide the console window on Windows
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let child = command
         .spawn()
         .map_err(|e| format!("Failed to start gateway ({}): {}", cmd, e))?;
 
@@ -304,11 +309,19 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
 
+    let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
+        .expect("failed to load tray icon");
     let tray = TrayIconBuilder::new()
+        .icon(icon)
         .menu(&menu)
+        .show_menu_on_left_click(false)
         .tooltip("YanClaw")
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { .. } = event {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                ..
+            } = event
+            {
                 show_window(tray.app_handle());
             }
         })

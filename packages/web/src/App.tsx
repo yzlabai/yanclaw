@@ -38,17 +38,17 @@ import { Settings } from "./pages/Settings";
 function SetupGuard({ children }: { children: React.ReactNode }) {
 	const location = useLocation();
 	const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+	const [gatewayReady, setGatewayReady] = useState(false);
 
+	// One-time: start gateway in Tauri mode and wait for it to be ready
 	useEffect(() => {
 		const init = async () => {
-			// Auto-start gateway server in Tauri mode
 			if (isTauri()) {
 				try {
 					await startGateway();
 				} catch {
 					// Gateway may already be running
 				}
-				// Wait for server to be ready
 				for (let i = 0; i < 20; i++) {
 					try {
 						const r = await fetch(`${API_BASE}/api/system/setup`);
@@ -59,13 +59,19 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 					await new Promise((r) => setTimeout(r, 500));
 				}
 			}
-			apiFetch(`${API_BASE}/api/system/setup`)
-				.then((r) => r.json())
-				.then((data: { needsSetup: boolean }) => setNeedsSetup(data.needsSetup))
-				.catch(() => setNeedsSetup(false));
+			setGatewayReady(true);
 		};
 		init();
 	}, []);
+
+	// Re-check setup status whenever pathname changes (e.g. after onboarding completes)
+	useEffect(() => {
+		if (!gatewayReady) return;
+		apiFetch(`${API_BASE}/api/system/setup`)
+			.then((r) => r.json())
+			.then((data: { needsSetup: boolean }) => setNeedsSetup(data.needsSetup))
+			.catch(() => setNeedsSetup(false));
+	}, [gatewayReady, location.pathname]);
 
 	if (needsSetup === null) return null; // loading
 

@@ -68,6 +68,21 @@ describe("ModelManager", () => {
 			expect(result.provider).toBe("google");
 		});
 
+		it("ollama works without profiles", () => {
+			const mgr = new ModelManager();
+			const config = {
+				models: {
+					providers: {
+						ollama: { type: "ollama", profiles: [], baseUrl: "http://localhost:11434/v1" },
+					},
+				},
+				systemModels: {},
+			} as unknown as Config;
+			const result = mgr.resolveByIdWithMeta("llama3.3", config);
+			expect(result.provider).toBe("ollama");
+			expect(result.profileId).toBe("default");
+		});
+
 		it("throws when no profiles configured", () => {
 			const mgr = new ModelManager();
 			const config = {

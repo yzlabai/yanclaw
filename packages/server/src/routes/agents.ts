@@ -10,6 +10,7 @@ const createAgentSchema = z.object({
 	systemPrompt: z.string().default("You are a helpful assistant."),
 	runtime: z.enum(["default", "claude-code"]).default("default"),
 	workspaceDir: z.string().optional(),
+	preference: z.enum(["default", "fast", "quality", "cheap"]).optional(),
 });
 
 const updateAgentSchema = z.object({
@@ -18,6 +19,7 @@ const updateAgentSchema = z.object({
 	systemPrompt: z.string().optional(),
 	runtime: z.enum(["default", "claude-code"]).optional(),
 	workspaceDir: z.string().optional(),
+	preference: z.enum(["default", "fast", "quality", "cheap"]).optional(),
 });
 
 export const agentsRoute = new Hono()
@@ -31,6 +33,7 @@ export const agentsRoute = new Hono()
 				systemPrompt: a.systemPrompt,
 				runtime: a.runtime,
 				workspaceDir: a.workspaceDir,
+				preference: a.preference,
 			})),
 		);
 	})

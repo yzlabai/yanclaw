@@ -3,7 +3,6 @@ import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Textarea } from "../components/ui/textarea";
 import { API_BASE, apiFetch } from "../lib/api";
 
 type ProviderType = "anthropic" | "openai" | "google" | "ollama" | "openai-compatible";
@@ -56,9 +55,10 @@ export function Settings() {
 		stt: "",
 	});
 	const [port, setPort] = useState(18789);
-	const [model, setModel] = useState("claude-sonnet-4-20250514");
-	const [systemPrompt, setSystemPrompt] = useState("");
 	const [saving, setSaving] = useState(false);
+	const [testResults, setTestResults] = useState<
+		Record<number, { ok: boolean; count?: number; error?: string } | "loading" | null>
+	>({});
 
 	useEffect(() => {
 		apiFetch(`${API_BASE}/api/config`)
@@ -66,12 +66,6 @@ export function Settings() {
 			.then((config: Record<string, unknown>) => {
 				const gw = config.gateway as { port?: number } | undefined;
 				if (gw?.port) setPort(gw.port);
-
-				const agents = config.agents as { model?: string; systemPrompt?: string }[] | undefined;
-				if (agents?.[0]) {
-					if (agents[0].model) setModel(agents[0].model);
-					if (agents[0].systemPrompt) setSystemPrompt(agents[0].systemPrompt);
-				}
 
 				// Load providers
 				const models = config.models as {
@@ -143,6 +137,38 @@ export function Settings() {
 		});
 	};
 
+	const testConnection = async (idx: number) => {
+		const p = providers[idx];
+		if (!p.name) return;
+		setTestResults((prev) => ({ ...prev, [idx]: "loading" }));
+		try {
+			const res = await apiFetch(`${API_BASE}/api/models/list`, {
+				method: "POST",
+				body: JSON.stringify({
+					providerType: p.type,
+					apiKey: p.apiKey || undefined,
+					baseUrl: p.baseUrl || undefined,
+				}),
+			});
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				setTestResults((prev) => ({
+					...prev,
+					[idx]: { ok: false, error: (body as { error?: string }).error ?? `HTTP ${res.status}` },
+				}));
+				return;
+			}
+			const data = (await res.json()) as { models?: unknown[] };
+			const count = Array.isArray(data.models) ? data.models.length : 0;
+			setTestResults((prev) => ({ ...prev, [idx]: { ok: true, count } }));
+		} catch (e) {
+			setTestResults((prev) => ({
+				...prev,
+				[idx]: { ok: false, error: e instanceof Error ? e.message : "Connection failed" },
+			}));
+		}
+	};
+
 	const handleSave = async () => {
 		setSaving(true);
 
@@ -186,16 +212,6 @@ export function Settings() {
 				patch.gateway = { port };
 			}
 
-			// Agent config
-			patch.agents = [
-				{
-					id: "main",
-					name: "\u9ED8\u8BA4\u52A9\u624B",
-					model,
-					systemPrompt: systemPrompt || "You are a helpful assistant.",
-				},
-			];
-
 			const res = await apiFetch(`${API_BASE}/api/config`, {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
@@ -219,15 +235,12 @@ export function Settings() {
 			<h2 className="text-lg font-semibold mb-6">设置</h2>
 
 			<Tabs defaultValue="providers" className="w-full">
-				<TabsList className="grid w-full grid-cols-4 rounded-xl">
+				<TabsList className="grid w-full grid-cols-3 rounded-xl">
 					<TabsTrigger value="providers" className="rounded-xl">
 						Providers
 					</TabsTrigger>
 					<TabsTrigger value="models" className="rounded-xl">
 						Models
-					</TabsTrigger>
-					<TabsTrigger value="agent" className="rounded-xl">
-						Default Agent
 					</TabsTrigger>
 					<TabsTrigger value="gateway" className="rounded-xl">
 						Gateway
@@ -309,6 +322,26 @@ export function Settings() {
 											/>
 										</div>
 									)}
+									<div className="flex items-center gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											className="rounded-xl text-xs"
+											disabled={!p.name || testResults[idx] === "loading"}
+											onClick={() => testConnection(idx)}
+										>
+											{testResults[idx] === "loading" ? "测试中..." : "测试连接"}
+										</Button>
+										{testResults[idx] && testResults[idx] !== "loading" && (
+											<span
+												className={`text-xs ${testResults[idx].ok ? "text-green-500" : "text-red-400"}`}
+											>
+												{testResults[idx].ok
+													? `连接成功 (${testResults[idx].count} 个模型)`
+													: testResults[idx].error}
+											</span>
+										)}
+									</div>
 								</div>
 							))}
 							{providers.length === 0 && (
@@ -444,38 +477,6 @@ export function Settings() {
 										className="rounded-xl"
 									/>
 								</div>
-							</div>
-						</div>
-					</div>
-				</TabsContent>
-
-				{/* Default Agent */}
-				<TabsContent value="agent" className="mt-4">
-					<div className="rounded-2xl shadow-warm border border-border p-6 space-y-4">
-						<h3 className="text-sm font-medium text-foreground/80">Default Agent</h3>
-						<div className="space-y-4">
-							<div>
-								<label className={labelCls}>Model ID</label>
-								<Input
-									type="text"
-									value={model}
-									onChange={(e) => setModel(e.target.value)}
-									placeholder="claude-sonnet-4-20250514"
-									className="rounded-xl"
-								/>
-								<p className="text-xs text-muted-foreground mt-1">
-									Fallback model when systemModels is not configured.
-								</p>
-							</div>
-							<div>
-								<label className={labelCls}>System Prompt</label>
-								<Textarea
-									value={systemPrompt}
-									onChange={(e) => setSystemPrompt(e.target.value)}
-									placeholder="You are a helpful assistant."
-									rows={4}
-									className="rounded-xl resize-y"
-								/>
 							</div>
 						</div>
 					</div>

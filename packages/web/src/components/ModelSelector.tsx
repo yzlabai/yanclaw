@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAvailableModels } from "../hooks/useAvailableModels";
 import { API_BASE, apiFetch } from "../lib/api";
 import {
 	Select,
@@ -11,19 +12,6 @@ import {
 	SelectValue,
 } from "./ui/select";
 
-interface ModelEntry {
-	id: string;
-	name: string;
-	status: "available" | "cooldown" | "failed";
-}
-
-interface ProviderModels {
-	provider: string;
-	type: string;
-	models: ModelEntry[];
-	error?: string;
-}
-
 interface ModelSelectorProps {
 	sessionKey: string | null;
 	disabled?: boolean;
@@ -31,21 +19,8 @@ interface ModelSelectorProps {
 }
 
 export function ModelSelector({ sessionKey, disabled, className }: ModelSelectorProps) {
-	const [providers, setProviders] = useState<ProviderModels[]>([]);
+	const { providers, loading } = useAvailableModels();
 	const [selectedModel, setSelectedModel] = useState<string>("");
-	const [loading, setLoading] = useState(false);
-
-	// Fetch available models
-	useEffect(() => {
-		setLoading(true);
-		apiFetch(`${API_BASE}/api/models/available`)
-			.then((r) => r.json())
-			.then((data: { providers: ProviderModels[] }) => {
-				setProviders(data.providers ?? []);
-			})
-			.catch(() => {})
-			.finally(() => setLoading(false));
-	}, []);
 
 	// Load session's current model override when session changes
 	useEffect(() => {

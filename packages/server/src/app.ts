@@ -35,9 +35,9 @@ const app = new Hono()
 		}),
 	)
 	.use("/api/*", authMiddleware)
-	.use("/api/*", rateLimiter({ windowMs: 60_000, max: 60 }))
-	.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10 }))
-	.use("/api/approvals/*", rateLimiter({ windowMs: 60_000, max: 30 }));
+	.use("/api/*", rateLimiter({ windowMs: 60_000, max: 300 }))
+	.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 20 }))
+	.use("/api/approvals/*", rateLimiter({ windowMs: 60_000, max: 60 }));
 
 const apiRoutes = app
 	.basePath("/api")

@@ -54,17 +54,17 @@ export function McpServers() {
 
 	const fetchServers = useCallback(() => {
 		apiFetch(`${API_BASE}/api/mcp/servers`)
-			.then((r) => r.json())
+			.then((r) => (r.ok ? r.json() : Promise.reject()))
 			.then((data: McpServer[]) => {
-				setServers(data);
-				setLoading(false);
+				if (Array.isArray(data)) setServers(data);
 			})
-			.catch(() => setLoading(false));
+			.catch(() => {})
+			.finally(() => setLoading(false));
 	}, []);
 
 	useEffect(() => {
 		fetchServers();
-		const interval = setInterval(fetchServers, 10_000);
+		const interval = setInterval(fetchServers, 30_000);
 		return () => clearInterval(interval);
 	}, [fetchServers]);
 
