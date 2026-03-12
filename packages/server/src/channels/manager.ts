@@ -153,6 +153,11 @@ export class ChannelManager {
 		return this.adapters.get(key);
 	}
 
+	/** Remove a registered adapter. */
+	unregister(key: string): void {
+		this.adapters.delete(key);
+	}
+
 	/** Handle an inbound message: DM policy → route → agent → reply. */
 	private async handleInbound(msg: InboundMessage): Promise<void> {
 		// We need a config to route. This is injected via gateway.

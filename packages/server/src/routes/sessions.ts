@@ -1,4 +1,6 @@
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { z } from "zod";
 import { getGateway } from "../gateway";
 
 export const sessionsRoute = new Hono()
@@ -108,6 +110,28 @@ export const sessionsRoute = new Hono()
 			},
 		});
 	})
+	.patch(
+		"/:key",
+		zValidator(
+			"json",
+			z.object({
+				modelOverride: z.string().nullable().optional(),
+			}),
+		),
+		(c) => {
+			const gw = getGateway();
+			const key = decodeURIComponent(c.req.param("key"));
+			const { modelOverride } = c.req.valid("json");
+
+			if (modelOverride !== undefined) {
+				const updated = gw.sessions.updateModelOverride(key, modelOverride);
+				if (!updated) return c.json({ error: "Session not found" }, 404);
+			}
+
+			const session = gw.sessions.getSession(key);
+			return c.json(session);
+		},
+	)
 	.delete("/:key", (c) => {
 		const gw = getGateway();
 		const key = decodeURIComponent(c.req.param("key"));

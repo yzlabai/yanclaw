@@ -100,10 +100,11 @@ describe("configSchema", () => {
 		expect(result.routing.bindings[0].dmScope).toBe("per-peer");
 	});
 
-	it("validates channel config", () => {
+	it("validates channel config (array format)", () => {
 		const result = configSchema.parse({
-			channels: {
-				telegram: {
+			channels: [
+				{
+					type: "telegram",
 					enabled: true,
 					accounts: [
 						{
@@ -114,9 +115,10 @@ describe("configSchema", () => {
 						},
 					],
 				},
-			},
+			],
 		});
-		expect(result.channels.telegram?.enabled).toBe(true);
-		expect(result.channels.telegram?.accounts[0].dmPolicy).toBe("allowlist");
+		expect(result.channels[0].type).toBe("telegram");
+		expect(result.channels[0].enabled).toBe(true);
+		expect(result.channels[0].accounts[0].dmPolicy).toBe("allowlist");
 	});
 });

@@ -93,23 +93,22 @@ const channelAccountSchema = z.object({
 	token: z.string().optional(),
 	botToken: z.string().optional(),
 	appToken: z.string().optional(),
+	// Feishu / extensible fields
+	appId: z.string().optional(),
+	appSecret: z.string().optional(),
+	// DM & permissions
 	allowFrom: z.array(z.string()).default([]),
 	dmPolicy: z.enum(["open", "allowlist", "pairing"]).default("allowlist"),
 	ownerIds: z.array(z.string()).default([]),
 });
 
-const channelConfigSchema = z.object({
-	enabled: z.boolean().default(false),
+const channelEntrySchema = z.object({
+	type: z.string(),
+	enabled: z.boolean().default(true),
 	accounts: z.array(channelAccountSchema).default([]),
 });
 
-const channelsSchema = z
-	.object({
-		telegram: channelConfigSchema.optional(),
-		discord: channelConfigSchema.optional(),
-		slack: channelConfigSchema.optional(),
-	})
-	.default({});
+const channelsSchema = z.array(channelEntrySchema).default([]);
 
 const bindingSchema = z.object({
 	channel: z.string().optional(),
@@ -185,6 +184,31 @@ const defaultAgent = {
 	systemPrompt: DEFAULT_SYSTEM_PROMPT,
 };
 
+// --- MCP Schema ---
+
+const mcpServerSchema = z
+	.object({
+		// stdio mode
+		command: z.string().optional(),
+		args: z.array(z.string()).default([]),
+		env: z.record(z.string()).default({}),
+		// HTTP mode (Streamable HTTP / SSE)
+		url: z.string().url().optional(),
+		headers: z.record(z.string()).default({}),
+		// Common
+		enabled: z.boolean().default(true),
+		timeout: z.number().default(30000),
+	})
+	.refine((d) => d.command || d.url, {
+		message: "Must specify either command (stdio) or url (HTTP)",
+	});
+
+const mcpSchema = z
+	.object({
+		servers: z.record(mcpServerSchema).default({}),
+	})
+	.default({});
+
 // --- Main Config Schema ---
 
 export const configSchema = z.object({
@@ -201,6 +225,8 @@ export const configSchema = z.object({
 	models: modelsSchema,
 
 	systemModels: systemModelsSchema,
+
+	mcp: mcpSchema,
 
 	channels: channelsSchema,
 
@@ -334,5 +360,9 @@ export type SecurityConfig = z.infer<typeof configSchema>["security"];
 export type ProviderConfig = z.infer<typeof providerSchema>;
 export type AuthProfile = z.infer<typeof authProfileSchema>;
 export type SystemModels = z.infer<typeof systemModelsSchema>;
+
+export type McpServerConfig = z.input<typeof mcpServerSchema>;
+export type ChannelEntry = z.infer<typeof channelEntrySchema>;
+export type ChannelAccount = z.infer<typeof channelAccountSchema>;
 
 export { agentSchema, bindingSchema };

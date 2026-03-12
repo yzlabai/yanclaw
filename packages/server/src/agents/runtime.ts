@@ -6,6 +6,7 @@ import { type Config, DEFAULT_SYSTEM_PROMPT, type Preference } from "../config/s
 import { resolveDataDir } from "../config/store";
 import { MemoryStore } from "../db/memories";
 import { SessionStore } from "../db/sessions";
+import type { McpClientManager } from "../mcp/client";
 import type { MediaStore } from "../media";
 import { generateEmbedding } from "../memory/embeddings";
 import type { LeakDetector } from "../security/leak-detector";
@@ -36,6 +37,7 @@ export class AgentRuntime {
 	private approvalManager?: ApprovalManager;
 	private mediaStore?: MediaStore;
 	private leakDetector?: LeakDetector;
+	private mcpClientManager?: McpClientManager;
 	/** Maps YanClaw sessionKey → Agent SDK session ID (for resume). */
 	private sdkSessionIds = new Map<string, string>();
 
@@ -44,11 +46,13 @@ export class AgentRuntime {
 		approvalManager?: ApprovalManager,
 		mediaStore?: MediaStore,
 		leakDetector?: LeakDetector,
+		mcpClientManager?: McpClientManager,
 	) {
 		this.modelManager = modelManager ?? new ModelManager();
 		this.approvalManager = approvalManager;
 		this.mediaStore = mediaStore;
 		this.leakDetector = leakDetector;
+		this.mcpClientManager = mcpClientManager;
 	}
 
 	/** Generate a short title for a session (fire-and-forget). */
@@ -218,30 +222,41 @@ export class AgentRuntime {
 				{ role: "user", content: userContent },
 			];
 
-			// Resolve model: 2D scene×preference with fallback to legacy model ID
+			// Resolve model: session override → 2D scene×preference → legacy model ID
+			const session = this.sessionStore.getSession(sessionKey);
+			const modelOverride = session?.modelOverride;
 			const scene = imageUrls && imageUrls.length > 0 ? "vision" : "chat";
 			const resolvedPreference = preference ?? agentConfig.preference ?? "default";
 
 			let model: LanguageModel;
 			let provider: string;
 			let profileId: string;
-			try {
-				// Try 2D systemModels resolution first
-				({ model, provider, profileId } = this.modelManager.resolveWithMeta(
-					scene,
-					resolvedPreference,
-					config,
-				));
-			} catch {
-				// Fallback to legacy: resolve by agent's model ID directly
+
+			if (modelOverride) {
+				// Session-level model override takes priority
 				({ model, provider, profileId } = this.modelManager.resolveByIdWithMeta(
-					agentConfig.model,
+					modelOverride,
 					config,
 				));
+			} else {
+				try {
+					// Try 2D systemModels resolution first
+					({ model, provider, profileId } = this.modelManager.resolveWithMeta(
+						scene,
+						resolvedPreference,
+						config,
+					));
+				} catch {
+					// Fallback to legacy: resolve by agent's model ID directly
+					({ model, provider, profileId } = this.modelManager.resolveByIdWithMeta(
+						agentConfig.model,
+						config,
+					));
+				}
 			}
 
 			// Create tools filtered by policy + ownerOnly
-			const tools = createToolset({
+			const tools = await createToolset({
 				workspaceDir,
 				toolsConfig: config.tools,
 				agentTools: agentConfig.tools,
@@ -254,6 +269,7 @@ export class AgentRuntime {
 				sessionKey,
 				approvalManager: this.approvalManager,
 				agentCapabilities: agentConfig.capabilities,
+				mcpClientManager: this.mcpClientManager,
 			});
 
 			// Stream execution with failure tracking

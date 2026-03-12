@@ -1,15 +1,19 @@
 import { ModelManager } from "./agents/model-manager";
 import { AgentRuntime } from "./agents/runtime";
 import { ApprovalManager } from "./approvals";
-import { DiscordAdapter } from "./channels/discord";
 import { ChannelManager } from "./channels/manager";
-import { SlackAdapter } from "./channels/slack";
-import { TelegramAdapter } from "./channels/telegram";
+import { channelRegistry } from "./channels/registry";
+// Import adapters to trigger self-registration side effects
+import "./channels/discord";
+import "./channels/feishu";
+import "./channels/slack";
+import "./channels/telegram";
 import type { ConfigStore } from "./config";
 import { CronService } from "./cron";
 import { MemoryStore } from "./db/memories";
 import { SessionStore } from "./db/sessions";
 import { getRawDatabase } from "./db/sqlite";
+import { McpClientManager } from "./mcp/client";
 import { MediaStore } from "./media";
 import { SttService } from "./media/stt";
 import { MemoryAutoIndexer } from "./memory";
@@ -32,6 +36,7 @@ export interface GatewayContext {
 	cronService: CronService;
 	pluginRegistry: PluginRegistry;
 	approvalManager: ApprovalManager;
+	mcpClientManager: McpClientManager;
 	leakDetector: LeakDetector;
 	auditLogger: AuditLogger | null;
 	anomalyDetector: AnomalyDetector;
@@ -43,6 +48,7 @@ let ctx: GatewayContext | null = null;
 export function initGateway(config: ConfigStore): GatewayContext {
 	const modelManager = new ModelManager();
 	const approvalManager = new ApprovalManager();
+	const mcpClientManager = new McpClientManager();
 	const mediaStore = new MediaStore();
 	const leakDetector = new LeakDetector();
 	const anomalyDetector = new AnomalyDetector();
@@ -58,7 +64,13 @@ export function initGateway(config: ConfigStore): GatewayContext {
 
 	setEmbeddingModelManager(modelManager);
 	const sttService = new SttService(modelManager);
-	const agentRuntime = new AgentRuntime(modelManager, approvalManager, mediaStore, leakDetector);
+	const agentRuntime = new AgentRuntime(
+		modelManager,
+		approvalManager,
+		mediaStore,
+		leakDetector,
+		mcpClientManager,
+	);
 	const channelManager = new ChannelManager();
 	channelManager.sttService = sttService;
 	const cronService = new CronService();
@@ -104,6 +116,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		cronService,
 		pluginRegistry,
 		approvalManager,
+		mcpClientManager,
 		leakDetector,
 		auditLogger,
 		anomalyDetector,
@@ -111,6 +124,27 @@ export function initGateway(config: ConfigStore): GatewayContext {
 	};
 
 	return ctx;
+}
+
+/** Initialize and connect MCP servers from config. */
+export async function startMcp(gw: GatewayContext): Promise<void> {
+	const cfg = gw.config.get();
+	const servers = cfg.mcp?.servers ?? {};
+	const count = Object.keys(servers).length;
+	if (count === 0) return;
+
+	await gw.mcpClientManager.startAll(servers);
+
+	const status = gw.mcpClientManager.getStatus();
+	const connected = Object.values(status).filter((s) => s.status === "connected").length;
+	console.log(`[gateway] MCP: ${connected}/${count} server(s) connected`);
+
+	// Hot-reload: watch for mcp config changes
+	gw.config.onChange((newCfg) => {
+		gw.mcpClientManager.reload(newCfg.mcp?.servers ?? {}).catch((err) => {
+			console.error("[mcp] Hot-reload failed:", err);
+		});
+	});
 }
 
 /** Discover and load plugins. */
@@ -128,44 +162,20 @@ export async function startPlugins(gw: GatewayContext): Promise<void> {
 	}
 }
 
-/** Initialize and connect channels from config. */
+/** Initialize and connect channels from config using the channel registry. */
 export async function startChannels(gw: GatewayContext): Promise<void> {
 	const cfg = gw.config.get();
 
-	// Telegram
-	if (cfg.channels.telegram?.enabled) {
-		for (const account of cfg.channels.telegram.accounts) {
-			if (!account.token) continue;
-			const adapter = new TelegramAdapter({
-				accountId: account.id,
-				token: account.token,
-			});
-			gw.channelManager.register(`telegram:${account.id}`, adapter);
-		}
-	}
+	for (const channel of cfg.channels) {
+		if (!channel.enabled) continue;
 
-	// Slack
-	if (cfg.channels.slack?.enabled) {
-		for (const account of cfg.channels.slack.accounts) {
-			if (!account.botToken || !account.appToken) continue;
-			const adapter = new SlackAdapter({
-				accountId: account.id,
-				botToken: account.botToken,
-				appToken: account.appToken,
-			});
-			gw.channelManager.register(`slack:${account.id}`, adapter);
-		}
-	}
-
-	// Discord
-	if (cfg.channels.discord?.enabled) {
-		for (const account of cfg.channels.discord.accounts) {
-			if (!account.token) continue;
-			const adapter = new DiscordAdapter({
-				accountId: account.id,
-				token: account.token,
-			});
-			gw.channelManager.register(`discord:${account.id}`, adapter);
+		for (const account of channel.accounts) {
+			const adapter = channelRegistry.create(channel.type, account);
+			if (!adapter) {
+				console.warn(`[channel] Skipping ${channel.type}:${account.id} (missing required config)`);
+				continue;
+			}
+			gw.channelManager.register(`${channel.type}:${account.id}`, adapter);
 		}
 	}
 

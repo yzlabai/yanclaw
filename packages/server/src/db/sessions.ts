@@ -142,6 +142,16 @@ export class SessionStore {
 		db.update(sessions).set({ title, updatedAt: Date.now() }).where(eq(sessions.key, key)).run();
 	}
 
+	updateModelOverride(key: string, modelOverride: string | null): boolean {
+		const db = getDb();
+		const result = db
+			.update(sessions)
+			.set({ modelOverride, updatedAt: Date.now() })
+			.where(eq(sessions.key, key))
+			.run();
+		return result.changes > 0;
+	}
+
 	deleteSession(key: string): boolean {
 		const db = getDb();
 		const result = db.delete(sessions).where(eq(sessions.key, key)).run();
@@ -157,6 +167,7 @@ export class SessionStore {
 			.select({
 				id: messages.id,
 				role: messages.role,
+				content: messages.content,
 				tokenCount: messages.tokenCount,
 			})
 			.from(messages)
@@ -170,6 +181,8 @@ export class SessionStore {
 
 		for (const msg of rows) {
 			if (msg.role === "system") continue;
+			// Preserve messages with image references to avoid breaking vision context
+			if (msg.content && /\!\[.*\]\(|"type"\s*:\s*"image"/.test(msg.content)) continue;
 			accumulated += msg.tokenCount;
 			toDelete.push(msg.id);
 			if (accumulated >= tokensToFree) break;

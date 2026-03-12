@@ -1,5 +1,6 @@
 import { Client, Events, GatewayIntentBits, type Message } from "discord.js";
 import { CHANNEL_DOCK } from "./dock";
+import { channelRegistry } from "./registry";
 import type {
 	Attachment,
 	ChannelAdapter,
@@ -195,3 +196,14 @@ export class DiscordAdapter implements ChannelAdapter {
 		};
 	}
 }
+
+// Self-registration
+channelRegistry.register({
+	type: "discord",
+	capabilities: CHANNEL_DOCK.discord,
+	requiredFields: ["token"],
+	create: (account) => {
+		if (!account.token) return null;
+		return new DiscordAdapter({ accountId: account.id, token: account.token });
+	},
+});

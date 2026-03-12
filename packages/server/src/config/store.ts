@@ -14,10 +14,39 @@ export function resolveConfigPath(): string {
 	return process.env.YANCLAW_CONFIG_PATH ?? join(resolveDataDir(), "config.json5");
 }
 
+/** Migrate old channels config from object format to array format. */
+function migrateChannelsConfig(raw: unknown): unknown {
+	if (!raw || typeof raw !== "object") return raw;
+	const obj = raw as Record<string, unknown>;
+	const channels = obj.channels;
+	if (!channels || Array.isArray(channels)) return raw;
+
+	if (typeof channels === "object") {
+		const entries = [];
+		for (const [type, config] of Object.entries(channels as Record<string, unknown>)) {
+			if (config && typeof config === "object") {
+				entries.push({ type, ...(config as Record<string, unknown>) });
+			}
+		}
+		if (entries.length > 0) {
+			console.log("[config] Migrated channels from object to array format");
+			obj.channels = entries;
+		} else {
+			obj.channels = [];
+		}
+	}
+
+	return raw;
+}
+
 /** Migrate old config format (models.anthropic/openai/google/ollama) to new providers format. */
 export function migrateConfig(raw: unknown): unknown {
 	if (!raw || typeof raw !== "object") return raw;
 	const obj = raw as Record<string, unknown>;
+
+	// Migrate channels object → array
+	migrateChannelsConfig(obj);
+
 	const models = obj.models as Record<string, unknown> | undefined;
 	if (!models) return raw;
 

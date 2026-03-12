@@ -77,6 +77,7 @@ export const systemRoute = new Hono()
 		// Respond first, then shut down
 		setTimeout(async () => {
 			console.log("[gateway] Shutdown requested via API");
+			await gw.mcpClientManager.stopAll();
 			await gw.channelManager.disconnectAll();
 			gw.channelManager.stopHealthMonitor();
 			gw.cronService.stop();

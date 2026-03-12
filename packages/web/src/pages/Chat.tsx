@@ -1,5 +1,6 @@
 import { ArrowUp, Menu, Paperclip, Square, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ModelSelector } from "../components/ModelSelector";
 import { ChatContainerContent, ChatContainerRoot } from "../components/prompt-kit/chat-container";
 import { FileAttachment } from "../components/prompt-kit/file-attachment";
 import { TypingLoader } from "../components/prompt-kit/loader";
@@ -775,6 +776,7 @@ export function Chat() {
 						/>
 						<PromptInputActions className="justify-between pt-1 px-1">
 							<div className="flex items-center gap-1">
+								<ModelSelector sessionKey={currentSession} disabled={isStreaming} />
 								<Button
 									variant="ghost"
 									size="icon"

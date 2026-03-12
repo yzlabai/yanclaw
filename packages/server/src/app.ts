@@ -10,6 +10,7 @@ import { channelsRoute } from "./routes/channels";
 import { chatRoute } from "./routes/chat";
 import { configRoute } from "./routes/config";
 import { cronRoute } from "./routes/cron";
+import { mcpRoute } from "./routes/mcp";
 import { mediaRoute } from "./routes/media";
 import { memoryRoute } from "./routes/memory";
 import { messagesRoute } from "./routes/messages";
@@ -47,6 +48,7 @@ const apiRoutes = app
 	.route("/sessions", sessionsRoute)
 	.route("/config", configRoute)
 	.route("/cron", cronRoute)
+	.route("/mcp", mcpRoute)
 	.route("/media", mediaRoute)
 	.route("/memory", memoryRoute)
 	.route("/messages", messagesRoute)

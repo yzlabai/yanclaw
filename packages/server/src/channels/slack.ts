@@ -1,5 +1,6 @@
 import { App } from "@slack/bolt";
 import { CHANNEL_DOCK } from "./dock";
+import { channelRegistry } from "./registry";
 import type {
 	Attachment,
 	ChannelAdapter,
@@ -203,3 +204,18 @@ export class SlackAdapter implements ChannelAdapter {
 		};
 	}
 }
+
+// Self-registration
+channelRegistry.register({
+	type: "slack",
+	capabilities: CHANNEL_DOCK.slack,
+	requiredFields: ["botToken", "appToken"],
+	create: (account) => {
+		if (!account.botToken || !account.appToken) return null;
+		return new SlackAdapter({
+			accountId: account.id,
+			botToken: account.botToken,
+			appToken: account.appToken,
+		});
+	},
+});

@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import { CHANNEL_DOCK } from "./dock";
+import { channelRegistry } from "./registry";
 import type {
 	Attachment,
 	ChannelAdapter,
@@ -260,3 +261,14 @@ export class TelegramAdapter implements ChannelAdapter {
 		};
 	}
 }
+
+// Self-registration
+channelRegistry.register({
+	type: "telegram",
+	capabilities: CHANNEL_DOCK.telegram,
+	requiredFields: ["token"],
+	create: (account) => {
+		if (!account.token) return null;
+		return new TelegramAdapter({ accountId: account.id, token: account.token });
+	},
+});

@@ -198,6 +198,11 @@ const MIGRATIONS = [
 			CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
 		`,
 	},
+	{
+		version: 4,
+		name: "session_model_override",
+		sql: `ALTER TABLE sessions ADD COLUMN model_override TEXT;`,
+	},
 ];
 
 export function closeDatabase(): void {

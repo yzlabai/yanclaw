@@ -1,3 +1,4 @@
+import { channelRegistry } from "../channels/registry";
 import type { PluginChannelFactory, PluginDefinition, PluginHooks, PluginToolDef } from "./types";
 
 /** Central registry for all loaded plugins. */
@@ -27,7 +28,7 @@ export class PluginRegistry {
 			}
 		}
 
-		// Register channel factories
+		// Register channel factories (bridge to channelRegistry for unified startup)
 		if (plugin.channels) {
 			for (const factory of plugin.channels) {
 				if (this.channelFactories.has(factory.type)) {
@@ -35,6 +36,20 @@ export class PluginRegistry {
 					continue;
 				}
 				this.channelFactories.set(factory.type, factory);
+				channelRegistry.register({
+					type: factory.type,
+					capabilities: factory.capabilities ?? {
+						chatTypes: ["direct"],
+						supportsMedia: false,
+						supportsThread: false,
+						supportsMarkdown: false,
+						supportsEdit: false,
+						supportsReaction: false,
+						blockStreaming: false,
+						maxTextLength: 4000,
+					},
+					create: (account) => factory.create(account),
+				});
 			}
 		}
 

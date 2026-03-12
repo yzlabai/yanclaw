@@ -86,39 +86,74 @@ async function fetchOpenAICompatible(apiKey?: string, baseUrl?: string): Promise
 	return (body.data || []).map((m) => ({ id: m.id, name: m.id }));
 }
 
-export const modelsRoute = new Hono().post(
-	"/list",
-	zValidator("json", listModelsSchema),
-	async (c) => {
+async function fetchByType(type: string, apiKey: string, baseUrl?: string): Promise<ModelEntry[]> {
+	switch (type) {
+		case "anthropic":
+			return fetchAnthropic(apiKey);
+		case "openai":
+			return fetchOpenAI(apiKey);
+		case "google":
+			return fetchGoogle(apiKey);
+		case "ollama":
+			return fetchOllama(baseUrl);
+		case "openai-compatible":
+			return fetchOpenAICompatible(apiKey, baseUrl);
+		default:
+			return [];
+	}
+}
+
+// Server-side cache for /available endpoint
+let modelsCache: { data: ProviderModels[]; fetchedAt: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+interface ProviderModels {
+	provider: string;
+	type: string;
+	models: Array<ModelEntry & { status: "available" | "cooldown" | "failed" }>;
+	error?: string;
+}
+
+export const modelsRoute = new Hono()
+	.post("/list", zValidator("json", listModelsSchema), async (c) => {
 		const { providerType, apiKey, baseUrl } = c.req.valid("json");
 
 		try {
-			let models: ModelEntry[];
-
-			switch (providerType) {
-				case "anthropic":
-					models = await fetchAnthropic(apiKey || "");
-					break;
-				case "openai":
-					models = await fetchOpenAI(apiKey || "");
-					break;
-				case "google":
-					models = await fetchGoogle(apiKey || "");
-					break;
-				case "ollama":
-					models = await fetchOllama(baseUrl);
-					break;
-				case "openai-compatible":
-					models = await fetchOpenAICompatible(apiKey, baseUrl);
-					break;
-				default:
-					models = [];
-			}
-
+			const models = await fetchByType(providerType, apiKey || "", baseUrl);
 			return c.json({ models });
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
 			return c.json({ models: [], error: `Failed to fetch models: ${message}` });
 		}
-	},
-);
+	})
+	.get("/available", async (c) => {
+		const { getGateway } = await import("../gateway");
+		const gw = getGateway();
+		const config = gw.config.get();
+		const modelManager = gw.modelManager;
+
+		// Return cached result if fresh
+		if (modelsCache && Date.now() - modelsCache.fetchedAt < CACHE_TTL) {
+			return c.json({ providers: modelsCache.data, cached: true });
+		}
+
+		const results: ProviderModels[] = [];
+		for (const [name, provider] of Object.entries(config.models.providers)) {
+			const apiKey = provider.profiles[0]?.apiKey;
+			if (!apiKey && provider.type !== "ollama") continue;
+			try {
+				const models = await fetchByType(provider.type, apiKey ?? "", provider.baseUrl);
+				const profileId = provider.profiles[0]?.id ?? "default";
+				const modelsWithStatus = models.map((m) => ({
+					...m,
+					status: modelManager.getProfileStatus(name, profileId),
+				}));
+				results.push({ provider: name, type: provider.type, models: modelsWithStatus });
+			} catch {
+				results.push({ provider: name, type: provider.type, models: [], error: "unreachable" });
+			}
+		}
+
+		modelsCache = { data: results, fetchedAt: Date.now() };
+		return c.json({ providers: results });
+	});

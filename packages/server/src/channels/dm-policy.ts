@@ -5,10 +5,10 @@ export type DmPolicyResult = "allowed" | "denied" | "pairing-required";
 
 /** Check DM policy for an inbound message. */
 export function checkDmPolicy(msg: InboundMessage, config: Config): DmPolicyResult {
-	const channelConfig = config.channels[msg.channel as keyof typeof config.channels];
-	if (!channelConfig || !channelConfig.enabled) return "denied";
+	const channelEntry = config.channels.find((c) => c.type === msg.channel);
+	if (!channelEntry || !channelEntry.enabled) return "denied";
 
-	const account = channelConfig.accounts.find((a) => a.id === msg.accountId);
+	const account = channelEntry.accounts.find((a) => a.id === msg.accountId);
 	if (!account) return "denied";
 
 	// Group messages bypass DM policy
@@ -46,10 +46,10 @@ export function isOwnerSender(msg: InboundMessage, config: Config): boolean {
 	// WebChat is always owner
 	if (msg.channel === "webchat") return true;
 
-	const channelConfig = config.channels[msg.channel as keyof typeof config.channels];
-	if (!channelConfig) return false;
+	const channelEntry = config.channels.find((c) => c.type === msg.channel);
+	if (!channelEntry) return false;
 
-	const account = channelConfig.accounts.find((a) => a.id === msg.accountId);
+	const account = channelEntry.accounts.find((a) => a.id === msg.accountId);
 	if (!account) return false;
 
 	return account.ownerIds.includes(msg.senderId);

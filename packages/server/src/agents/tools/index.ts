@@ -1,6 +1,8 @@
+import { jsonSchema, tool } from "ai";
 import type { ApprovalManager } from "../../approvals";
 import type { Config, ToolsConfig } from "../../config/schema";
 import type { MemoryStore } from "../../db/memories";
+import type { McpClientManager } from "../../mcp/client";
 import {
 	createBrowserActionTool,
 	createBrowserNavigateTool,
@@ -44,6 +46,18 @@ function expandGroups(names: string[]): string[] {
 		}
 	}
 	return result;
+}
+
+/** Check if toolName matches any pattern in the list (supports group: prefix and * wildcard). */
+function matchesPatterns(toolName: string, patterns: string[]): boolean {
+	const expanded = expandGroups(patterns);
+	return expanded.some((pattern) => {
+		if (pattern.includes("*")) {
+			const regex = new RegExp(`^${pattern.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`);
+			return regex.test(toolName);
+		}
+		return pattern === toolName;
+	});
 }
 
 /** Capabilities required by each tool. */
@@ -104,36 +118,30 @@ export function isToolAllowed(
 	if (channelId && toolsConfig.byChannel[channelId]) {
 		const channelPolicy = toolsConfig.byChannel[channelId];
 		if (channelPolicy.deny) {
-			const denied = expandGroups(channelPolicy.deny);
-			if (denied.includes(toolName)) return false;
+			if (matchesPatterns(toolName, channelPolicy.deny)) return false;
 		}
 		if (channelPolicy.allow) {
-			const allowed = expandGroups(channelPolicy.allow);
-			if (!allowed.includes(toolName)) return false;
+			if (!matchesPatterns(toolName, channelPolicy.allow)) return false;
 		}
 	}
 
 	// Agent-level deny
 	if (agentTools?.deny) {
-		const denied = expandGroups(agentTools.deny);
-		if (denied.includes(toolName)) return false;
+		if (matchesPatterns(toolName, agentTools.deny)) return false;
 	}
 
 	// Global deny
 	if (toolsConfig.policy.deny) {
-		const denied = expandGroups(toolsConfig.policy.deny);
-		if (denied.includes(toolName)) return false;
+		if (matchesPatterns(toolName, toolsConfig.policy.deny)) return false;
 	}
 
 	// Check allow lists (agent → global)
 	if (agentTools?.allow) {
-		const allowed = expandGroups(agentTools.allow);
-		return allowed.includes(toolName);
+		return matchesPatterns(toolName, agentTools.allow);
 	}
 
 	if (toolsConfig.policy.allow) {
-		const allowed = expandGroups(toolsConfig.policy.allow);
-		return allowed.includes(toolName);
+		return matchesPatterns(toolName, toolsConfig.policy.allow);
 	}
 
 	// Fall back to default policy
@@ -148,7 +156,7 @@ function extractBinary(command: string): string {
 	return match?.[1]?.split("/").pop() ?? trimmed.split(/\s/)[0] ?? "";
 }
 
-export function createToolset(opts: {
+export async function createToolset(opts: {
 	workspaceDir: string;
 	toolsConfig: ToolsConfig;
 	agentTools?: { allow?: string[]; deny?: string[] };
@@ -161,6 +169,7 @@ export function createToolset(opts: {
 	sessionKey?: string;
 	approvalManager?: ApprovalManager;
 	agentCapabilities?: string | string[];
+	mcpClientManager?: McpClientManager;
 }) {
 	const { workspaceDir, toolsConfig, agentTools, channelId, isOwner = true } = opts;
 	const timeout = toolsConfig.exec.timeout;
@@ -204,6 +213,23 @@ export function createToolset(opts: {
 		});
 	}
 
+	// MCP tools — bridge from MCP servers into the toolset
+	if (opts.mcpClientManager) {
+		for (const serverName of opts.mcpClientManager.getConnectedServers()) {
+			const mcpTools = await opts.mcpClientManager.listTools(serverName);
+			for (const t of mcpTools) {
+				const name = `mcp.${serverName}.${t.name}`;
+				allTools[name] = tool({
+					description: t.description ?? "",
+					parameters: jsonSchema(t.inputSchema as Parameters<typeof jsonSchema>[0]),
+					execute: async (input) => {
+						return opts.mcpClientManager?.callTool(serverName, t.name, input);
+					},
+				}) as ReturnType<typeof createShellTool>;
+			}
+		}
+	}
+
 	// Resolve capability constraints
 	const grantedCaps = resolveCapabilities(opts.agentCapabilities);
 
@@ -218,8 +244,16 @@ export function createToolset(opts: {
 		tools[name] = t;
 	}
 
-	// Wrap shell tool with approval if configured
+	// Fail-closed: remove shell when approval is required but manager unavailable
 	const { approvalManager } = opts;
+	if (!approvalManager && tools.shell && toolsConfig.exec.ask !== "off") {
+		console.warn(
+			"[tools] Shell tool disabled: approval required but approvalManager not available",
+		);
+		delete tools.shell;
+	}
+
+	// Wrap shell tool with approval if configured
 	if (approvalManager && tools.shell && toolsConfig.exec.ask !== "off") {
 		const originalShell = tools.shell;
 		const askMode = toolsConfig.exec.ask;

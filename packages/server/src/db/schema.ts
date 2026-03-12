@@ -12,6 +12,7 @@ export const sessions = sqliteTable(
 		title: text("title"),
 		messageCount: integer("message_count").default(0).notNull(),
 		tokenCount: integer("token_count").default(0).notNull(),
+		modelOverride: text("model_override"),
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),
 	},

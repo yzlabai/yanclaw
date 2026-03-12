@@ -7,6 +7,7 @@ import {
 	runSessionCleanup,
 	startChannels,
 	startCron,
+	startMcp,
 	startMemoryIndexer,
 	startPlugins,
 } from "./gateway";
@@ -37,22 +38,25 @@ async function main() {
 
 	console.log(`YanClaw Gateway running on http://${hostname}:${server.port}`);
 
-	// 5. Load plugins
+	// 5. Start MCP servers
+	await startMcp(gw);
+
+	// 6. Load plugins
 	await startPlugins(gw);
 
-	// 6. Start channels (Telegram, Discord, Slack)
+	// 7. Start channels (Telegram, Discord, Slack)
 	await startChannels(gw);
 
-	// 7. Start cron scheduler
+	// 8. Start cron scheduler
 	startCron(gw);
 
-	// 8. Session/media cleanup
+	// 9. Session/media cleanup
 	runSessionCleanup(gw);
 
-	// 9. Memory auto-indexer
+	// 10. Memory auto-indexer
 	await startMemoryIndexer(gw);
 
-	// 10. Hot-reload listener
+	// 11. Hot-reload listener
 	configStore.onChange((_newConfig) => {
 		console.log("[gateway] Config reloaded");
 	});

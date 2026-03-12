@@ -241,17 +241,19 @@ export function Onboarding() {
 		setSaving(true);
 		setError("");
 		try {
-			const channels: Record<string, unknown> = {};
+			const channels: unknown[] = [];
 
 			if (telegramToken) {
-				channels.telegram = {
+				channels.push({
+					type: "telegram",
 					enabled: true,
 					accounts: [{ id: "default", token: telegramToken, dmPolicy: "allowlist" }],
-				};
+				});
 			}
 
 			if (slackBotToken && slackAppToken) {
-				channels.slack = {
+				channels.push({
+					type: "slack",
 					enabled: true,
 					accounts: [
 						{
@@ -261,10 +263,10 @@ export function Onboarding() {
 							dmPolicy: "allowlist",
 						},
 					],
-				};
+				});
 			}
 
-			if (Object.keys(channels).length > 0) {
+			if (channels.length > 0) {
 				const res = await apiFetch(`${API_BASE}/api/config`, {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },

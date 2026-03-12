@@ -78,6 +78,16 @@ export class TokenRotation {
 		return this.currentToken;
 	}
 
+	/** Whether rotation is active (interval > 0). */
+	get isActive(): boolean {
+		return this.timer !== null;
+	}
+
+	/** Whether the grace period is currently active (both old and new tokens accepted). */
+	get isInGracePeriod(): boolean {
+		return this.previousToken !== null && Date.now() < this.graceDeadline;
+	}
+
 	stop(): void {
 		if (this.timer) {
 			clearInterval(this.timer);

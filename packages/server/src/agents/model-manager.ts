@@ -114,6 +114,15 @@ export class ModelManager {
 		}
 	}
 
+	/** Get the health status of a specific profile. */
+	getProfileStatus(providerName: string, profileId: string): "available" | "cooldown" | "failed" {
+		const key = `${providerName}:${profileId}`;
+		const state = this.profileStates.get(key);
+		if (!state) return "available";
+		if (state.cooldownUntil > Date.now()) return "cooldown";
+		return "available";
+	}
+
 	/** Report a failure for a profile (triggers cooldown after maxFails). */
 	reportFailure(provider: string, profileId: string): void {
 		const key = `${provider}:${profileId}`;

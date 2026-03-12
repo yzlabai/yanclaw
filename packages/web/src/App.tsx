@@ -6,6 +6,7 @@ import {
 	MessageSquare,
 	PanelLeftClose,
 	PanelLeftOpen,
+	Plug,
 	Radio,
 	Settings as SettingsIcon,
 	X,
@@ -29,6 +30,7 @@ import { Agents } from "./pages/Agents";
 import { Channels } from "./pages/Channels";
 import { Chat } from "./pages/Chat";
 import { Cron } from "./pages/Cron";
+import { McpServers } from "./pages/McpServers";
 import { Onboarding } from "./pages/Onboarding";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
@@ -83,6 +85,7 @@ const NAV_ITEMS = [
 	{ to: "/sessions", label: "会话", icon: History },
 	{ to: "/agents", label: "Agent", icon: Bot },
 	{ to: "/channels", label: "频道", icon: Radio },
+	{ to: "/mcp", label: "MCP", icon: Plug },
 	{ to: "/cron", label: "定时任务", icon: Clock },
 	{ to: "/settings", label: "设置", icon: SettingsIcon },
 ];
@@ -247,6 +250,7 @@ function AppLayout() {
 						<Route path="/" element={<Chat />} />
 						<Route path="/channels" element={<Channels />} />
 						<Route path="/sessions" element={<Sessions />} />
+						<Route path="/mcp" element={<McpServers />} />
 						<Route path="/cron" element={<Cron />} />
 						<Route path="/agents" element={<Agents />} />
 						<Route path="/settings" element={<Settings />} />

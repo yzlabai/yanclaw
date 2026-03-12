@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { ChannelAdapter } from "../channels/types";
+import type { ChannelAdapter, ChannelCapabilities } from "../channels/types";
 import type { GatewayContext } from "../gateway";
 
 /** Plugin tool definition — mirrors the Agent tool shape. */
@@ -30,6 +30,7 @@ export interface PluginHooks {
 /** Channel factory for plugin-provided channels. */
 export interface PluginChannelFactory {
 	type: string;
+	capabilities?: ChannelCapabilities;
 	create: (config: Record<string, unknown>) => ChannelAdapter;
 }
 
