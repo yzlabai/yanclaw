@@ -109,7 +109,7 @@ function MarkdownComponent({
 				}
 			} else if (inMath) {
 				current += `${line}\n`;
-				if (line.startsWith("$$")) {
+				if (line.trimStart().startsWith("$$")) {
 					result.push(current);
 					current = "";
 					inMath = false;

@@ -10,6 +10,21 @@ export class SttService {
 	 * Requires systemModels.stt to be configured.
 	 */
 	async transcribe(audioUrl: string, config: Config): Promise<string> {
+		// Download audio
+		const audioResp = await fetch(audioUrl);
+		if (!audioResp.ok) {
+			throw new Error(`Failed to download audio: ${audioResp.status}`);
+		}
+		const audioBlob = await audioResp.blob();
+
+		return this.transcribeBlob(audioBlob, "audio.ogg", config);
+	}
+
+	/**
+	 * Transcribe audio from a buffer/blob directly.
+	 * Avoids HTTP round-trip when the file is already in memory.
+	 */
+	async transcribeBlob(data: Blob | Uint8Array, filename: string, config: Config): Promise<string> {
 		const modelId = this.resolveModelId(config);
 		if (!modelId) {
 			throw new Error("systemModels.stt not configured");
@@ -18,16 +33,11 @@ export class SttService {
 		const { providerConfig, profile } = this.modelManager.findProviderForModel(modelId, config);
 		const baseUrl = profile.baseUrl ?? providerConfig.baseUrl ?? "https://api.openai.com/v1";
 
-		// Download audio
-		const audioResp = await fetch(audioUrl);
-		if (!audioResp.ok) {
-			throw new Error(`Failed to download audio: ${audioResp.status}`);
-		}
-		const audioBlob = await audioResp.blob();
+		const blob = data instanceof Blob ? data : new Blob([data]);
 
 		// Build form data for OpenAI-compatible transcription API
 		const form = new FormData();
-		form.append("file", audioBlob, "audio.ogg");
+		form.append("file", blob, filename);
 		form.append("model", modelId);
 
 		const resp = await fetch(`${baseUrl}/audio/transcriptions`, {

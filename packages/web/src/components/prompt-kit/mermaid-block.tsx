@@ -2,15 +2,20 @@ import { useEffect, useId, useRef, useState } from "react";
 
 let mermaidModule: typeof import("mermaid") | null = null;
 
+function detectTheme(): "default" | "dark" {
+	return document.documentElement.getAttribute("data-theme") === "light" ? "default" : "dark";
+}
+
 async function getMermaid() {
 	if (!mermaidModule) {
 		mermaidModule = await import("mermaid");
-		mermaidModule.default.initialize({
-			startOnLoad: false,
-			theme: document.documentElement.getAttribute("data-theme") === "light" ? "default" : "dark",
-			securityLevel: "strict",
-		});
 	}
+	// Re-initialize each time to pick up theme changes
+	mermaidModule.default.initialize({
+		startOnLoad: false,
+		theme: detectTheme(),
+		securityLevel: "strict",
+	});
 	return mermaidModule.default;
 }
 

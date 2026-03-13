@@ -20,12 +20,18 @@ export const sttRoute = new Hono().post(
 			return c.json({ error: "Media not found" }, 404);
 		}
 
-		// Build a local URL for SttService
-		const port = config.gateway.port;
-		const audioUrl = `http://localhost:${port}/api/media/${mediaId}`;
+		if (!media.mimeType.startsWith("audio/")) {
+			return c.json({ error: "File is not an audio file" }, 400);
+		}
+
+		// Read file directly instead of HTTP loopback
+		const file = await gw.media.readFile(mediaId);
+		if (!file) {
+			return c.json({ error: "Failed to read media file" }, 500);
+		}
 
 		try {
-			const text = await gw.sttService.transcribe(audioUrl, config);
+			const text = await gw.sttService.transcribeBlob(file.data, file.filename, config);
 			return c.json({ text });
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "Transcription failed";
