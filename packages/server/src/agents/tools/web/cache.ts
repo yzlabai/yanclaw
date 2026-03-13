@@ -9,7 +9,7 @@ interface CacheEntry {
 	expires: number;
 }
 
-class WebCache {
+export class WebCache {
 	private cache = new Map<string, CacheEntry>();
 
 	get(key: string): string | undefined {
