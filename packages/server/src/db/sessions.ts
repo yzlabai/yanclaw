@@ -93,6 +93,8 @@ export class SessionStore {
 		msgs: Array<{
 			role: string;
 			content: string | null;
+			reasoning?: string | null;
+			reasoningSignature?: string | null;
 			toolCalls?: unknown[];
 			model?: string;
 			tokenCount?: number;
@@ -116,6 +118,8 @@ export class SessionStore {
 						sessionKey,
 						role: msg.role,
 						content: msg.content,
+						reasoning: msg.reasoning ?? null,
+						reasoningSignature: msg.reasoningSignature ?? null,
 						toolCalls: msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
 						model: msg.model ?? null,
 						tokenCount,

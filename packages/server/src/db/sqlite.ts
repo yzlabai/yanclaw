@@ -228,6 +228,14 @@ const MIGRATIONS = [
 			CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model);
 		`,
 	},
+	{
+		version: 6,
+		name: "message_reasoning",
+		sql: `
+			ALTER TABLE messages ADD COLUMN reasoning TEXT;
+			ALTER TABLE messages ADD COLUMN reasoning_signature TEXT;
+		`,
+	},
 ];
 
 export function closeDatabase(): void {

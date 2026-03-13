@@ -2,7 +2,14 @@ import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI, google } from "@ai-sdk/google";
 import { createOpenAI, openai } from "@ai-sdk/openai";
 import type { EmbeddingModel, LanguageModel } from "ai";
-import type { AuthProfile, Config, Preference, ProviderConfig } from "../config/schema";
+import type {
+	AuthProfile,
+	Config,
+	Preference,
+	ProviderConfig,
+	ProviderType,
+} from "../config/schema";
+import { reasoningFetch } from "./reasoning-fetch";
 
 interface ProfileState {
 	failCount: number;
@@ -19,6 +26,7 @@ interface ResolveResult {
 	model: LanguageModel;
 	provider: string;
 	profileId: string;
+	providerType: ProviderType;
 }
 
 /** Manages model resolution with generic providers, 2D scene×preference, and round-robin. */
@@ -196,6 +204,7 @@ export class ModelManager {
 			model: this.createModel(lookup.providerConfig, profile, lookup.resolvedModelId),
 			provider: lookup.providerName,
 			profileId: profile.id,
+			providerType: lookup.providerConfig.type,
 		};
 	}
 
@@ -260,11 +269,19 @@ export class ModelManager {
 					: anthropic(modelId, { headers: { "x-api-key": profile.apiKey } });
 
 			case "openai":
-			case "openai-compatible":
 				if (baseUrl) {
 					return createOpenAI({ apiKey: profile.apiKey, baseURL: baseUrl })(modelId);
 				}
 				return openai(modelId, { headers: { Authorization: `Bearer ${profile.apiKey}` } });
+
+			case "openai-compatible":
+				// Use reasoning-aware fetch to inject reasoning_content for
+				// providers like DeepSeek that require it in multi-turn history.
+				return createOpenAI({
+					apiKey: profile.apiKey,
+					baseURL: baseUrl,
+					fetch: reasoningFetch,
+				})(modelId);
 
 			case "google":
 				return baseUrl

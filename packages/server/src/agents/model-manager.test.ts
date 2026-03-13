@@ -44,6 +44,7 @@ describe("ModelManager", () => {
 			const result = mgr.resolveByIdWithMeta("claude-sonnet-4-20250514", config);
 			expect(result.provider).toBe("anthropic");
 			expect(result.profileId).toBe("default");
+			expect(result.providerType).toBe("anthropic");
 		});
 
 		it("selects openai for gpt model IDs", () => {
@@ -51,6 +52,7 @@ describe("ModelManager", () => {
 			const config = makeConfig([{ id: "default", apiKey: "sk-test" }]);
 			const result = mgr.resolveByIdWithMeta("gpt-4o", config);
 			expect(result.provider).toBe("openai");
+			expect(result.providerType).toBe("openai");
 		});
 
 		it("selects openai for o1/o3/o4 model IDs", () => {
@@ -66,6 +68,7 @@ describe("ModelManager", () => {
 			const config = makeConfig([{ id: "default", apiKey: "sk-test" }]);
 			const result = mgr.resolveByIdWithMeta("gemini-2.0-flash", config);
 			expect(result.provider).toBe("google");
+			expect(result.providerType).toBe("google");
 		});
 
 		it("ollama works without profiles", () => {
@@ -81,6 +84,7 @@ describe("ModelManager", () => {
 			const result = mgr.resolveByIdWithMeta("llama3.3", config);
 			expect(result.provider).toBe("ollama");
 			expect(result.profileId).toBe("default");
+			expect(result.providerType).toBe("ollama");
 		});
 
 		it("throws when no profiles configured", () => {
@@ -118,6 +122,7 @@ describe("ModelManager", () => {
 			const result = mgr.resolveByIdWithMeta("deepseek-chat", config);
 			expect(result.provider).toBe("deepseek");
 			expect(result.profileId).toBe("default");
+			expect(result.providerType).toBe("openai-compatible");
 		});
 
 		it("model alias mapping resolves correctly", () => {

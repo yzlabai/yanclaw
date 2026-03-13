@@ -32,6 +32,8 @@ export const messages = sqliteTable(
 			.references(() => sessions.key, { onDelete: "cascade" }),
 		role: text("role").notNull(),
 		content: text("content"),
+		reasoning: text("reasoning"),
+		reasoningSignature: text("reasoning_signature"),
 		toolCalls: text("tool_calls"),
 		attachments: text("attachments"),
 		model: text("model"),

@@ -2,7 +2,12 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { type CoreMessage, generateText, type LanguageModel, streamText } from "ai";
 import type { ApprovalManager } from "../approvals";
-import { type Config, DEFAULT_SYSTEM_PROMPT, type Preference } from "../config/schema";
+import {
+	type Config,
+	DEFAULT_SYSTEM_PROMPT,
+	type Preference,
+	type ProviderType,
+} from "../config/schema";
 import { resolveDataDir } from "../config/store";
 import { MemoryStore } from "../db/memories";
 import { SessionStore } from "../db/sessions";
@@ -14,7 +19,9 @@ import type { LeakDetector } from "../security/leak-detector";
 import { checkDataFlow, detectInjection, wrapUntrustedContent } from "../security/sanitize";
 import { runClaudeCode } from "./claude-code-runtime";
 import { compactMessages, flushToMemory, needsCompaction } from "./compaction";
+import { buildHistory } from "./history-builder";
 import { ModelManager } from "./model-manager";
+import { prepareReasoningContext } from "./reasoning-fetch";
 import { buildSystemPrompt } from "./system-prompt-builder";
 import { createToolset } from "./tools";
 import { LoopDetector } from "./tools/loop-detector";
@@ -219,12 +226,8 @@ export class AgentRuntime {
 				console.log(`[agent] Pruned ${pruned} messages from session ${sessionKey}`);
 			}
 
-			// Load history
+			// Load stored messages (history built after model resolution for provider-specific handling)
 			const storedMessages = this.sessionStore.loadMessages(sessionKey);
-			const history: CoreMessage[] = storedMessages.map((m) => ({
-				role: m.role as "user" | "assistant" | "system",
-				content: m.content ?? "",
-			}));
 
 			// Memory pre-heating: search for relevant memories on session start
 			let memoryContext = "";
@@ -272,12 +275,6 @@ export class AgentRuntime {
 				skillPrompts: skillPrompts?.length ? skillPrompts : undefined,
 			});
 
-			let messages: CoreMessage[] = [
-				{ role: "system", content: systemPrompt },
-				...history,
-				{ role: "user", content: userContent },
-			];
-
 			// Resolve model: session override → 2D scene×preference → legacy model ID
 			const session = this.sessionStore.getSession(sessionKey);
 			const modelOverride = session?.modelOverride;
@@ -287,29 +284,39 @@ export class AgentRuntime {
 			let model: LanguageModel;
 			let provider: string;
 			let profileId: string;
+			let providerType: ProviderType;
 
 			if (modelOverride) {
 				// Session-level model override takes priority
-				({ model, provider, profileId } = this.modelManager.resolveByIdWithMeta(
+				({ model, provider, profileId, providerType } = this.modelManager.resolveByIdWithMeta(
 					modelOverride,
 					config,
 				));
 			} else {
 				try {
 					// Try 2D systemModels resolution first
-					({ model, provider, profileId } = this.modelManager.resolveWithMeta(
+					({ model, provider, profileId, providerType } = this.modelManager.resolveWithMeta(
 						scene,
 						resolvedPreference,
 						config,
 					));
 				} catch {
 					// Fallback to legacy: resolve by agent's model ID directly
-					({ model, provider, profileId } = this.modelManager.resolveByIdWithMeta(
+					({ model, provider, profileId, providerType } = this.modelManager.resolveByIdWithMeta(
 						agentConfig.model,
 						config,
 					));
 				}
 			}
+
+			// Build provider-specific history from stored messages
+			const history = buildHistory(providerType, storedMessages);
+
+			let messages: CoreMessage[] = [
+				{ role: "system", content: systemPrompt },
+				...history,
+				{ role: "user", content: userContent },
+			];
 
 			// LLM-based context compaction: summarize old messages if approaching budget
 			const compactionCfg = config.session.compaction;
@@ -382,10 +389,22 @@ export class AgentRuntime {
 
 			// Stream execution with failure tracking
 			let fullText = "";
+			let fullReasoning = "";
+			let reasoningSignature = "";
 			let usage: { promptTokens: number; completionTokens: number };
 			const streamStartTime = Date.now();
 
 			try {
+				// Prepare reasoning context for the fetch middleware. For openai-compatible
+				// providers (DeepSeek etc.) this supplies reasoning_content to inject; for
+				// all others it clears any stale state from a previous session's run.
+				// Must be immediately before streamText (no awaits in between).
+				prepareReasoningContext(
+					providerType === "openai-compatible"
+						? storedMessages.filter((m) => m.role === "assistant").map((m) => m.reasoning ?? "")
+						: [],
+				);
+
 				const result = streamText({
 					model,
 					messages,
@@ -417,7 +436,14 @@ export class AgentRuntime {
 							break;
 
 						case "reasoning": {
+							fullReasoning += part.textDelta;
 							yield { type: "thinking", sessionKey, text: part.textDelta };
+							break;
+						}
+
+						case "reasoning-signature": {
+							reasoningSignature = (part as { type: "reasoning-signature"; signature: string })
+								.signature;
 							break;
 						}
 
@@ -557,6 +583,7 @@ export class AgentRuntime {
 							{
 								role: "assistant",
 								content: `${fullText}\n\n[interrupted]`,
+								reasoning: fullReasoning || null,
 								model: agentConfig.model,
 								tokenCount: 0,
 							},
@@ -575,6 +602,8 @@ export class AgentRuntime {
 				{
 					role: "assistant",
 					content: fullText || null,
+					reasoning: fullReasoning || null,
+					reasoningSignature: reasoningSignature || null,
 					model: agentConfig.model,
 					tokenCount: usage.completionTokens,
 				},
