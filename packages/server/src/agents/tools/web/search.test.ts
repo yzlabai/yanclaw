@@ -40,10 +40,7 @@ describe("createWebSearchTool", () => {
 	});
 
 	it("handles search errors gracefully", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockRejectedValue(new Error("Network error")),
-		);
+		vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network error")));
 
 		const tool = createWebSearchTool({ maxOutput: 50000 });
 		const result = await tool.execute(

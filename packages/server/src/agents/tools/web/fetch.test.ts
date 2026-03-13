@@ -69,7 +69,9 @@ describe("createWebFetchTool", () => {
 	it("returns error for non-ok responses", async () => {
 		vi.stubGlobal(
 			"fetch",
-			vi.fn().mockResolvedValue(new Response("Not Found", { status: 404, statusText: "Not Found" })),
+			vi
+				.fn()
+				.mockResolvedValue(new Response("Not Found", { status: 404, statusText: "Not Found" })),
 		);
 
 		const tool = createWebFetchTool({ maxOutput: 50000 });

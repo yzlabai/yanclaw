@@ -11,7 +11,7 @@ describe("webKnowledgePlugin", () => {
 	});
 
 	it("ignores non-web_fetch tool calls", async () => {
-		const afterToolCall = webKnowledgePlugin.hooks!.afterToolCall!;
+		const afterToolCall = webKnowledgePlugin.hooks?.afterToolCall!;
 
 		// Should not throw for unrelated tool calls
 		await afterToolCall({ name: "shell", input: {} }, "some output");
@@ -19,7 +19,7 @@ describe("webKnowledgePlugin", () => {
 	});
 
 	it("ignores short or error results", async () => {
-		const afterToolCall = webKnowledgePlugin.hooks!.afterToolCall!;
+		const afterToolCall = webKnowledgePlugin.hooks?.afterToolCall!;
 
 		// Short content
 		await afterToolCall({ name: "web_fetch", input: { url: "https://x.com" } }, "short");
@@ -31,7 +31,7 @@ describe("webKnowledgePlugin", () => {
 	});
 
 	it("ignores results without URL (non-readability output)", async () => {
-		const afterToolCall = webKnowledgePlugin.hooks!.afterToolCall!;
+		const afterToolCall = webKnowledgePlugin.hooks?.afterToolCall!;
 		const longText = "a".repeat(200); // Long enough but no URL
 
 		await afterToolCall({ name: "web_fetch", input: {} }, longText);
@@ -50,7 +50,7 @@ describe("webKnowledgePlugin", () => {
 		};
 
 		// Initialize gateway context
-		webKnowledgePlugin.hooks!.onGatewayStart!(mockCtx as never);
+		webKnowledgePlugin.hooks?.onGatewayStart?.(mockCtx as never);
 
 		const content = [
 			"# Test Article Title",
@@ -63,7 +63,7 @@ describe("webKnowledgePlugin", () => {
 			"It contains multiple paragraphs of useful information.",
 		].join("\n");
 
-		await webKnowledgePlugin.hooks!.afterToolCall!(
+		await webKnowledgePlugin.hooks?.afterToolCall?.(
 			{ name: "web_fetch", input: { url: "https://example.com/article" } },
 			content,
 		);
@@ -79,31 +79,29 @@ describe("webKnowledgePlugin", () => {
 		);
 
 		// Cleanup
-		webKnowledgePlugin.hooks!.onGatewayStop!();
+		webKnowledgePlugin.hooks?.onGatewayStop?.();
 	});
 
 	it("skips duplicate URLs", async () => {
 		const storeMock = vi.fn();
-		const searchFtsMock = vi.fn().mockResolvedValue([
-			{ content: "URL: https://example.com/article\nExisting content" },
-		]);
+		const searchFtsMock = vi
+			.fn()
+			.mockResolvedValue([{ content: "URL: https://example.com/article\nExisting content" }]);
 
 		const mockCtx = {
 			config: { get: () => ({ memory: { enabled: true } }) },
 			memories: { store: storeMock, searchFts: searchFtsMock },
 		};
 
-		webKnowledgePlugin.hooks!.onGatewayStart!(mockCtx as never);
+		webKnowledgePlugin.hooks?.onGatewayStart?.(mockCtx as never);
 
-		const content = "# Dup Article\n\nURL: https://example.com/article\n\n---\n\nContent here that passes length.";
+		const content =
+			"# Dup Article\n\nURL: https://example.com/article\n\n---\n\nContent here that passes length.";
 
-		await webKnowledgePlugin.hooks!.afterToolCall!(
-			{ name: "web_fetch", input: {} },
-			content,
-		);
+		await webKnowledgePlugin.hooks?.afterToolCall?.({ name: "web_fetch", input: {} }, content);
 
 		expect(storeMock).not.toHaveBeenCalled();
 
-		webKnowledgePlugin.hooks!.onGatewayStop!();
+		webKnowledgePlugin.hooks?.onGatewayStop?.();
 	});
 });
