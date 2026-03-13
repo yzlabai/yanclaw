@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="packages/web/public/icon-512.svg" width="128" height="128" alt="YanClaw">
+  <img src="packages/web/public/icon-512.png" width="128" height="128" alt="YanClaw">
 </p>
 
 <h1 align="center">YanClaw</h1>
