@@ -7,7 +7,7 @@
 		"frontendDist": "../packages/web/dist",
 		"devUrl": "http://localhost:5173",
 		"beforeDevCommand": "bun run --filter @yanclaw/web dev",
-		"beforeBuildCommand": "bun run --filter @yanclaw/web build && bun run --filter @yanclaw/server build:compile"
+		"beforeBuildCommand": "bun run --filter @yanclaw/web build && bun run --filter @yanclaw/server build:compile:skip-if-exists"
 	},
 	"app": {
 		"windows": [

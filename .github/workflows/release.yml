@@ -95,14 +95,55 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # macOS: pre-build server binary and codesign it before Tauri bundles it.
+      # Tauri signs the .app and main binary but NOT resource files like yanclaw-server.
+      # Apple notarization requires all executables to have valid signatures,
+      # hardened runtime, and secure timestamps.
+      - name: Import Apple certificate
+        if: startsWith(matrix.platform, 'macos')
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+
+      - name: Build and sign server binary (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          # Build the standalone server binary
+          bun run --filter @yanclaw/server build:compile
+
+          # Sign with hardened runtime + secure timestamp (required for notarization)
+          codesign --sign "$APPLE_SIGNING_IDENTITY" \
+            --options runtime \
+            --timestamp \
+            --force \
+            src-tauri/server/yanclaw-server
+
+          codesign --verify --verbose=2 src-tauri/server/yanclaw-server
+          echo "✓ Server binary signed successfully"
+
       # Build & upload
+      # On macOS, beforeBuildCommand skips server compile (binary already exists and is signed)
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS 签名 + 公证
+          # macOS signing + notarization
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}

@@ -12,7 +12,8 @@
 	"scripts": {
 		"dev": "bun --watch src/index.ts",
 		"build": "bun build src/index.ts --outdir dist --target bun --external playwright --external playwright-core --external electron --external chromium-bidi",
-		"build:compile": "bun build src/index.ts --compile --external playwright --external playwright-core --external electron --external chromium-bidi --outfile ../../src-tauri/server/yanclaw-server"
+		"build:compile": "bun build src/index.ts --compile --external playwright --external playwright-core --external electron --external chromium-bidi --outfile ../../src-tauri/server/yanclaw-server",
+		"build:compile:skip-if-exists": "node -e \"const f=require('fs');if(f.existsSync('../../src-tauri/server/yanclaw-server')||f.existsSync('../../src-tauri/server/yanclaw-server.exe')){console.log('Server binary exists, skipping compile');process.exit(0)}process.exit(1)\" || bun run build:compile"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.2.0",
