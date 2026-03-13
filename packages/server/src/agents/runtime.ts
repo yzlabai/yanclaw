@@ -27,6 +27,14 @@ import { createToolset } from "./tools";
 import { LoopDetector } from "./tools/loop-detector";
 import type { UsageTracker } from "./usage-tracker";
 
+/** Memory recall metadata — which memories influenced the response. */
+export interface RecallInfo {
+	memoryId: string;
+	snippet: string;
+	score: number;
+	source: string;
+}
+
 export type AgentEvent =
 	| { type: "delta"; sessionKey: string; text: string }
 	| { type: "thinking"; sessionKey: string; text: string }
@@ -35,7 +43,8 @@ export type AgentEvent =
 	| { type: "done"; sessionKey: string; usage: { promptTokens: number; completionTokens: number } }
 	| { type: "aborted"; sessionKey: string; partial: string }
 	| { type: "error"; sessionKey: string; message: string }
-	| { type: "steering_resume"; sessionKey: string; message: string };
+	| { type: "steering_resume"; sessionKey: string; message: string }
+	| { type: "recall"; sessionKey: string; memories: RecallInfo[] };
 
 export class AgentRuntime {
 	private sessionStore = new SessionStore();
@@ -239,10 +248,27 @@ export class AgentRuntime {
 					} catch {
 						// Fall back to FTS-only search
 					}
-					const memories = this.memoryStore.search(agentId, message, queryEmbedding, 5);
-					if (memories.length > 0) {
-						const lines = memories.map((m) => `- ${m.content}`);
+					const recalledMemories = await this.memoryStore.search(
+						agentId,
+						message,
+						queryEmbedding,
+						5,
+					);
+					if (recalledMemories.length > 0) {
+						const lines = recalledMemories.map((m) => `- ${m.content}`);
 						memoryContext = `\n\nRelevant memories:\n${lines.join("\n")}`;
+
+						// Emit recall event for UI transparency
+						yield {
+							type: "recall" as const,
+							sessionKey,
+							memories: recalledMemories.map((m) => ({
+								memoryId: m.id,
+								snippet: m.content.slice(0, 150),
+								score: m.score,
+								source: m.source,
+							})),
+						};
 					}
 				} catch (err) {
 					console.warn("[agent] Memory pre-heat failed:", err);

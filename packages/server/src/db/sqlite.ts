@@ -236,6 +236,12 @@ const MIGRATIONS = [
 			ALTER TABLE messages ADD COLUMN reasoning_signature TEXT;
 		`,
 	},
+	{
+		version: 7,
+		name: "memory_scope",
+		sql: `ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'private';
+			CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope);`,
+	},
 ];
 
 export function closeDatabase(): void {

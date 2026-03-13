@@ -74,9 +74,12 @@ export async function buildSystemPrompt(ctx: PromptContext): Promise<string> {
 		sections.push(`## Available Skills\n\n${ctx.skillPrompts.join("\n\n")}`);
 	}
 
-	// 4. Memory context
+	// 4. Memory context + proactive memory guidelines
 	if (ctx.memoryContext) {
 		sections.push(ctx.memoryContext);
+	}
+	if (ctx.config.memory.enabled) {
+		sections.push(buildMemoryGuidelines());
 	}
 
 	// 5. Runtime info (minimal + full)
@@ -121,6 +124,28 @@ function buildRuntimeInfo(ctx: PromptContext): string {
 
 	lines.push("</runtime>");
 	return lines.join("\n");
+}
+
+function buildMemoryGuidelines(): string {
+	return [
+		"<memory-guidelines>",
+		"You have persistent memory across conversations. Use it proactively:",
+		"",
+		"**When to store:**",
+		"- User preferences and work style (e.g. language, verbosity, coding style)",
+		"- Project facts (tech stack, team members, deadlines, conventions)",
+		"- Task outcomes and key decisions",
+		"- Important context that would be lost between sessions",
+		"",
+		"**When NOT to store:**",
+		"- Transient conversation details",
+		"- Easily re-derivable information (file contents, git history)",
+		"- Raw code snippets (store summaries instead)",
+		"",
+		"**Before answering**, search memory for relevant context using memory_search.",
+		"**Tag consistently:** preference, fact, decision, outcome, person, project.",
+		"</memory-guidelines>",
+	].join("\n");
 }
 
 function buildChannelContext(channelId: string): string {

@@ -19,8 +19,12 @@ export function createMemoryStoreTool(opts: {
 				.array(z.string())
 				.optional()
 				.describe("Tags to categorize this memory (e.g. ['preference', 'user-info'])"),
+			shared: z
+				.boolean()
+				.optional()
+				.describe("If true, store in shared knowledge base accessible by all agents"),
 		}),
-		execute: async ({ content, tags }) => {
+		execute: async ({ content, tags, shared }) => {
 			let embedding: Float32Array | undefined;
 			if (opts.config.memory.enabled) {
 				try {
@@ -37,9 +41,10 @@ export function createMemoryStoreTool(opts: {
 				source: "tool",
 				sessionKey: opts.sessionKey,
 				embedding,
+				scope: shared ? "shared" : "private",
 			});
 
-			return `Memory stored (id: ${id})`;
+			return `Memory stored (id: ${id}${shared ? ", shared" : ""})`;
 		},
 	});
 }
@@ -48,6 +53,7 @@ export function createMemorySearchTool(opts: {
 	memoryStore: MemoryStore;
 	agentId: string;
 	config: Config;
+	includeShared?: boolean;
 }) {
 	return tool({
 		description:
@@ -66,7 +72,13 @@ export function createMemorySearchTool(opts: {
 				}
 			}
 
-			const results = await opts.memoryStore.search(opts.agentId, query, queryEmbedding, limit);
+			const results = await opts.memoryStore.search(
+				opts.agentId,
+				query,
+				queryEmbedding,
+				limit,
+				opts.includeShared,
+			);
 
 			if (results.length === 0) {
 				return "No relevant memories found.";

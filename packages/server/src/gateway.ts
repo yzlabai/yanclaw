@@ -21,6 +21,7 @@ import { SttService } from "./media/stt";
 import { MemoryAutoIndexer } from "./memory";
 import { setEmbeddingModelManager } from "./memory/embeddings";
 import { PluginLoader, PluginRegistry } from "./plugins";
+import { webKnowledgePlugin } from "./plugins/builtin/web-knowledge";
 import { AnomalyDetector } from "./security/anomaly";
 import { AuditLogger } from "./security/audit";
 import { LeakDetector } from "./security/leak-detector";
@@ -175,12 +176,25 @@ export async function startPlugins(gw: GatewayContext): Promise<void> {
 	const loader = new PluginLoader(gw.pluginRegistry);
 	await loader.loadAll(cfg.plugins);
 
+	// Register built-in plugins
+	registerBuiltinPlugins(gw);
+
 	// Run onGatewayStart hooks
 	await gw.pluginRegistry.runGatewayStart(gw);
 
 	const count = gw.pluginRegistry.getAllPlugins().length;
 	if (count > 0) {
 		console.log(`[gateway] ${count} plugin(s) loaded`);
+	}
+}
+
+/** Register built-in plugins that ship with the server. */
+function registerBuiltinPlugins(gw: GatewayContext): void {
+	const cfg = gw.config.get();
+
+	// web-knowledge: auto-store web_fetch results into knowledge base
+	if (cfg.memory.enabled) {
+		gw.pluginRegistry.register(webKnowledgePlugin);
 	}
 }
 

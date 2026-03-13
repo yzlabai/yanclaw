@@ -10,6 +10,7 @@ import {
 	PromptInputActions,
 	PromptInputTextarea,
 } from "../components/prompt-kit/prompt-input";
+import { RecallPanel } from "../components/prompt-kit/recall-panel";
 import { ScrollButton } from "../components/prompt-kit/scroll-button";
 import { ThinkingPanel } from "../components/prompt-kit/thinking-panel";
 import { ToolCall } from "../components/prompt-kit/tool-call";
@@ -21,6 +22,7 @@ import {
 	API_BASE,
 	apiFetch,
 	cancelChat,
+	type RecallInfo,
 	sendChatMessage,
 	steerChat,
 	uploadMedia,
@@ -41,6 +43,7 @@ interface ChatMessage {
 	thinking?: string;
 	thinkingStartedAt?: number;
 	thinkingDurationMs?: number;
+	recallMemories?: RecallInfo[];
 	isStreaming?: boolean;
 	isPending?: boolean;
 	isAborted?: boolean;
@@ -472,6 +475,20 @@ export function Chat() {
 							});
 							break;
 
+						case "recall":
+							setMessages((prev) => {
+								const updated = [...prev];
+								const last = updated[updated.length - 1];
+								if (last?.role === "assistant") {
+									updated[updated.length - 1] = {
+										...last,
+										recallMemories: event.memories,
+									};
+								}
+								return updated;
+							});
+							break;
+
 						case "done":
 							setMessages((prev) => {
 								const updated = [...prev];
@@ -759,6 +776,11 @@ export function Chat() {
 											<div className="text-xs text-muted-foreground italic">
 												Response interrupted
 											</div>
+										)}
+
+										{/* Recall panel — memory citations */}
+										{msg.recallMemories && msg.recallMemories.length > 0 && (
+											<RecallPanel memories={msg.recallMemories} />
 										)}
 
 										{/* Streaming cursor */}

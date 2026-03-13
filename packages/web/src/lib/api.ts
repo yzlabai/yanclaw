@@ -97,6 +97,14 @@ export async function createWebSocket(): Promise<WebSocket> {
 	return new WebSocket(`${WS_BASE}/api/ws${params}`);
 }
 
+/** Memory recall info — which memories influenced the response. */
+export interface RecallInfo {
+	memoryId: string;
+	snippet: string;
+	score: number;
+	source: string;
+}
+
 export type AgentEvent =
 	| { type: "delta"; sessionKey: string; text: string }
 	| { type: "thinking"; sessionKey: string; text: string }
@@ -105,7 +113,8 @@ export type AgentEvent =
 	| { type: "done"; sessionKey: string; usage: { promptTokens: number; completionTokens: number } }
 	| { type: "aborted"; sessionKey: string; partial: string }
 	| { type: "error"; sessionKey: string; message: string }
-	| { type: "steering_resume"; sessionKey: string; message: string };
+	| { type: "steering_resume"; sessionKey: string; message: string }
+	| { type: "recall"; sessionKey: string; memories: RecallInfo[] };
 
 export async function sendChatMessage(
 	agentId: string,

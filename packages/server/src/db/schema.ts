@@ -129,6 +129,7 @@ export const memories = sqliteTable(
 		source: text("source"), // "auto" | "user" | "tool"
 		sessionKey: text("session_key"),
 		embedding: blob("embedding"), // Float32Array as buffer
+		scope: text("scope").notNull().default("private"), // "private" | "shared"
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),
 	},

@@ -22,6 +22,7 @@
 		"@hono/zod-validator": "^0.4.0",
 		"@larksuiteoapi/node-sdk": "^1.59.0",
 		"@modelcontextprotocol/sdk": "^1.27.1",
+		"@mozilla/readability": "^0.6.0",
 		"@slack/bolt": "^4.6.0",
 		"ai": "^4.3.0",
 		"cron-parser": "^5.5.0",
@@ -30,12 +31,15 @@
 		"grammy": "^1.41.1",
 		"hono": "^4.7.0",
 		"json5": "^2.2.3",
+		"linkedom": "^0.18.12",
 		"nanoid": "^5.1.6",
 		"playwright": "^1.58.2",
+		"turndown": "^7.2.2",
 		"zod": "^3.24.0"
 	},
 	"devDependencies": {
 		"@types/bun": "^1.2.0",
+		"@types/turndown": "^5.0.6",
 		"drizzle-kit": "^0.31.9"
 	}
 }

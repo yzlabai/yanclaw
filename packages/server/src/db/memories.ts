@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { memories } from "./schema";
 import { getDb, getRawDatabase } from "./sqlite";
@@ -10,6 +10,7 @@ export interface MemoryEntry {
 	tags: string[];
 	source: string;
 	sessionKey: string | null;
+	scope: "private" | "shared";
 	createdAt: number;
 	updatedAt: number;
 }
@@ -27,6 +28,7 @@ export class MemoryStore {
 		source?: string;
 		sessionKey?: string;
 		embedding?: Float32Array;
+		scope?: "private" | "shared";
 	}): Promise<string> {
 		const db = getDb();
 		const id = nanoid();
@@ -40,6 +42,7 @@ export class MemoryStore {
 			source: params.source ?? "user",
 			sessionKey: params.sessionKey ?? null,
 			embedding: params.embedding ? Buffer.from(params.embedding.buffer) : null,
+			scope: params.scope ?? "private",
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -75,59 +78,80 @@ export class MemoryStore {
 		return (result as unknown as { changes: number }).changes > 0;
 	}
 
-	/** List memories for an agent, ordered by most recent. */
-	async list(agentId: string, limit = 50, offset = 0): Promise<MemoryEntry[]> {
-		const db = getDb();
-		const rows = await db
-			.select()
-			.from(memories)
-			.where(eq(memories.agentId, agentId))
-			.orderBy(desc(memories.updatedAt))
-			.limit(limit)
-			.offset(offset);
+	/** List memories for an agent, ordered by most recent. Optionally include shared memories. */
+	async list(
+		agentId: string,
+		limit = 50,
+		offset = 0,
+		opts?: { includeShared?: boolean; tags?: string[]; source?: string; sortBy?: string },
+	): Promise<MemoryEntry[]> {
+		const rawDb = getRawDatabase();
 
-		return rows.map(toMemoryEntry);
+		const conditions: string[] = [];
+		const params: unknown[] = [];
+
+		// Agent scope: own memories + optionally shared
+		if (opts?.includeShared) {
+			conditions.push("(agent_id = ? OR scope = 'shared')");
+		} else {
+			conditions.push("agent_id = ?");
+		}
+		params.push(agentId);
+
+		// Tag filter: memories must contain ALL specified tags
+		if (opts?.tags && opts.tags.length > 0) {
+			for (const tag of opts.tags) {
+				conditions.push("EXISTS (SELECT 1 FROM json_each(tags) WHERE json_each.value = ?)");
+				params.push(tag);
+			}
+		}
+
+		// Source filter
+		if (opts?.source) {
+			conditions.push("source = ?");
+			params.push(opts.source);
+		}
+
+		const orderCol = opts?.sortBy === "createdAt" ? "created_at" : "updated_at";
+		const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+		params.push(limit, offset);
+
+		const rows = rawDb
+			.query<RawMemoryRow, unknown[]>(
+				`SELECT * FROM memories ${where} ORDER BY ${orderCol} DESC LIMIT ? OFFSET ?`,
+			)
+			.all(...params);
+
+		return rows.map(rawToMemoryEntry);
 	}
 
-	/** Full-text search using FTS5. */
-	async searchFts(agentId: string, query: string, limit = 20): Promise<MemorySearchResult[]> {
+	/** Full-text search using FTS5. Optionally include shared memories. */
+	async searchFts(
+		agentId: string,
+		query: string,
+		limit = 20,
+		includeShared = false,
+	): Promise<MemorySearchResult[]> {
 		const rawDb = getRawDatabase();
 
 		// Use FTS5 match with BM25 ranking
+		const agentFilter = includeShared ? "(m.agent_id = ? OR m.scope = 'shared')" : "m.agent_id = ?";
+
 		const rows = rawDb
-			.query<
-				{
-					id: string;
-					agent_id: string;
-					content: string;
-					tags: string | null;
-					source: string | null;
-					session_key: string | null;
-					created_at: number;
-					updated_at: number;
-					rank: number;
-				},
-				[string, string, number]
-			>(
+			.query<RawMemoryRow & { rank: number }, [string, string, number]>(
 				`SELECT m.*, fts.rank
 				 FROM memories m
 				 JOIN memories_fts fts ON m.rowid = fts.rowid
 				 WHERE memories_fts MATCH ?
-				   AND m.agent_id = ?
+				   AND ${agentFilter}
 				 ORDER BY fts.rank
 				 LIMIT ?`,
 			)
 			.all(query, agentId, limit);
 
 		return rows.map((r) => ({
-			id: r.id,
-			agentId: r.agent_id,
-			content: r.content,
-			tags: r.tags ? JSON.parse(r.tags) : [],
-			source: r.source ?? "user",
-			sessionKey: r.session_key,
-			createdAt: r.created_at,
-			updatedAt: r.updated_at,
+			...rawToMemoryEntry(r),
 			// FTS5 rank is negative (lower = better match), normalize to 0-1
 			score: Math.min(1, Math.max(0, 1 + r.rank)),
 		}));
@@ -138,25 +162,16 @@ export class MemoryStore {
 		agentId: string,
 		queryEmbedding: Float32Array,
 		limit = 10,
+		includeShared = false,
 	): Promise<MemorySearchResult[]> {
 		const rawDb = getRawDatabase();
 
-		// Load all entries with embeddings for this agent
+		const agentFilter = includeShared ? "(agent_id = ? OR scope = 'shared')" : "agent_id = ?";
+
 		const rows = rawDb
-			.query<
-				{
-					id: string;
-					agent_id: string;
-					content: string;
-					tags: string | null;
-					source: string | null;
-					session_key: string | null;
-					embedding: Buffer;
-					created_at: number;
-					updated_at: number;
-				},
-				[string]
-			>("SELECT * FROM memories WHERE agent_id = ? AND embedding IS NOT NULL")
+			.query<RawMemoryRow & { embedding: Buffer }, [string]>(
+				`SELECT * FROM memories WHERE ${agentFilter} AND embedding IS NOT NULL`,
+			)
 			.all(agentId);
 
 		// Compute cosine similarity in JS
@@ -168,14 +183,7 @@ export class MemoryStore {
 					r.embedding.byteLength / 4,
 				);
 				return {
-					id: r.id,
-					agentId: r.agent_id,
-					content: r.content,
-					tags: r.tags ? JSON.parse(r.tags) : [],
-					source: r.source ?? "user",
-					sessionKey: r.session_key,
-					createdAt: r.created_at,
-					updatedAt: r.updated_at,
+					...rawToMemoryEntry(r),
 					score: cosineSimilarity(queryEmbedding, emb),
 				};
 			})
@@ -191,6 +199,7 @@ export class MemoryStore {
 		query: string,
 		queryEmbedding?: Float32Array,
 		limit = 10,
+		includeShared = false,
 	): Promise<MemorySearchResult[]> {
 		// Fetch more candidates than needed so MMR has room to filter
 		const candidateLimit = limit * 3;
@@ -198,7 +207,7 @@ export class MemoryStore {
 
 		// FTS5 keyword search
 		try {
-			const ftsResults = await this.searchFts(agentId, query, candidateLimit);
+			const ftsResults = await this.searchFts(agentId, query, candidateLimit, includeShared);
 			for (const r of ftsResults) {
 				results.set(r.id, r);
 			}
@@ -208,7 +217,12 @@ export class MemoryStore {
 
 		// Vector search if embedding available
 		if (queryEmbedding) {
-			const vecResults = await this.searchVector(agentId, queryEmbedding, candidateLimit);
+			const vecResults = await this.searchVector(
+				agentId,
+				queryEmbedding,
+				candidateLimit,
+				includeShared,
+			);
 			for (const r of vecResults) {
 				const existing = results.get(r.id);
 				if (existing) {
@@ -229,27 +243,44 @@ export class MemoryStore {
 		return applyMMR(candidates, 0.7, limit);
 	}
 
-	/** Count memories for an agent. */
-	async count(agentId: string): Promise<number> {
-		const db = getDb();
-		const result = await db
-			.select({ count: sql<number>`count(*)` })
-			.from(memories)
-			.where(eq(memories.agentId, agentId));
-		return result[0]?.count ?? 0;
+	/** Count memories for an agent. Optionally include shared. */
+	async count(agentId: string, includeShared = false): Promise<number> {
+		const rawDb = getRawDatabase();
+		const agentFilter = includeShared ? "(agent_id = ? OR scope = 'shared')" : "agent_id = ?";
+		const row = rawDb
+			.query<{ cnt: number }, [string]>(`SELECT count(*) as cnt FROM memories WHERE ${agentFilter}`)
+			.get(agentId);
+		return row?.cnt ?? 0;
 	}
 }
 
-function toMemoryEntry(row: typeof memories.$inferSelect): MemoryEntry {
+// ---------------------------------------------------------------------------
+// Raw row type for direct SQL queries
+// ---------------------------------------------------------------------------
+
+interface RawMemoryRow {
+	id: string;
+	agent_id: string;
+	content: string;
+	tags: string | null;
+	source: string | null;
+	session_key: string | null;
+	scope: string | null;
+	created_at: number;
+	updated_at: number;
+}
+
+function rawToMemoryEntry(r: RawMemoryRow): MemoryEntry {
 	return {
-		id: row.id,
-		agentId: row.agentId,
-		content: row.content,
-		tags: row.tags ? JSON.parse(row.tags) : [],
-		source: row.source ?? "user",
-		sessionKey: row.sessionKey,
-		createdAt: row.createdAt,
-		updatedAt: row.updatedAt,
+		id: r.id,
+		agentId: r.agent_id,
+		content: r.content,
+		tags: r.tags ? JSON.parse(r.tags) : [],
+		source: r.source ?? "user",
+		sessionKey: r.session_key,
+		scope: (r.scope as "private" | "shared") ?? "private",
+		createdAt: r.created_at,
+		updatedAt: r.updated_at,
 	};
 }
 

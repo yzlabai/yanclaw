@@ -1,4 +1,5 @@
 import {
+	BookOpen,
 	Bot,
 	Clock,
 	History,
@@ -34,6 +35,7 @@ import { Agents } from "./pages/Agents";
 import { Channels } from "./pages/Channels";
 import { Chat } from "./pages/Chat";
 import { Cron } from "./pages/Cron";
+import { Knowledge } from "./pages/Knowledge";
 import { McpServers } from "./pages/McpServers";
 import { Onboarding } from "./pages/Onboarding";
 import { Sessions } from "./pages/Sessions";
@@ -90,6 +92,7 @@ const NAV_ITEMS = [
 	{ to: "/skills", labelKey: "nav.skills", icon: Puzzle },
 	{ to: "/mcp", labelKey: "nav.mcp", icon: Plug },
 	{ to: "/cron", labelKey: "nav.cron", icon: Clock },
+	{ to: "/knowledge", labelKey: "nav.knowledge", icon: BookOpen },
 	{ to: "/settings", labelKey: "nav.settings", icon: SettingsIcon },
 ];
 
@@ -265,6 +268,7 @@ function AppLayout() {
 						<Route path="/cron" element={<Cron />} />
 						<Route path="/agents" element={<Agents />} />
 						<Route path="/skills" element={<Skills />} />
+						<Route path="/knowledge" element={<Knowledge />} />
 						<Route path="/settings" element={<Settings />} />
 						<Route path="/onboarding" element={<Onboarding />} />
 					</Routes>
