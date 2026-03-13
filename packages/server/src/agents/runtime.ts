@@ -248,11 +248,13 @@ export class AgentRuntime {
 					} catch {
 						// Fall back to FTS-only search
 					}
+					const includeShared = agentConfig.memory?.sharedAccess ?? false;
 					const recalledMemories = await this.memoryStore.search(
 						agentId,
 						message,
 						queryEmbedding,
 						5,
+						includeShared,
 					);
 					if (recalledMemories.length > 0) {
 						const lines = recalledMemories.map((m) => `- ${m.content}`);

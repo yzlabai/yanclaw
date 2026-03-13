@@ -7,6 +7,7 @@ import {
 	Search,
 	Tags,
 	Trash2,
+	Upload,
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -116,6 +117,11 @@ export function Knowledge() {
 	const [batchRemoveTags, setBatchRemoveTags] = useState("");
 	const [showTagFilter, setShowTagFilter] = useState(false);
 
+	// Import
+	const [importing, setImporting] = useState(false);
+	const [dragOver, setDragOver] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+
 	// Debounce search
 	const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 	useEffect(() => {
@@ -219,6 +225,35 @@ export function Knowledge() {
 			)
 			.catch(() => {});
 	}, []);
+
+	// ── Import ────────────────────────────────────────────────────────
+
+	const handleImportFiles = useCallback(
+		async (files: FileList | File[]) => {
+			if (importing) return;
+			setImporting(true);
+			try {
+				for (const file of files) {
+					const form = new FormData();
+					form.append("file", file);
+					const res = await apiFetch(`${API_BASE}/api/memory/import`, {
+						method: "POST",
+						body: form,
+					});
+					if (!res.ok) {
+						console.error(`Import failed for ${file.name}: ${res.status}`);
+					}
+				}
+				fetchMemories();
+				refreshStats();
+			} catch (err) {
+				console.error("Import error:", err);
+			} finally {
+				setImporting(false);
+			}
+		},
+		[importing, fetchMemories, refreshStats],
+	);
 
 	// ── Actions ────────────────────────────────────────────────────────
 
@@ -352,7 +387,34 @@ export function Knowledge() {
 	}, [page, totalPages]);
 
 	return (
-		<div className="h-full overflow-y-auto">
+		<div
+			className="h-full overflow-y-auto relative"
+			onDragOver={(e) => {
+				e.preventDefault();
+				setDragOver(true);
+			}}
+			onDragLeave={(e) => {
+				if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) {
+					setDragOver(false);
+				}
+			}}
+			onDrop={(e) => {
+				e.preventDefault();
+				setDragOver(false);
+				if (e.dataTransfer.files.length) {
+					handleImportFiles(e.dataTransfer.files);
+				}
+			}}
+		>
+			{dragOver && (
+				<div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary rounded-xl">
+					<div className="flex flex-col items-center gap-2 text-primary">
+						<Upload className="h-10 w-10" />
+						<p className="text-lg font-medium">拖放文件导入知识库</p>
+						<p className="text-sm text-muted-foreground">支持 .md, .txt, .json, .csv</p>
+					</div>
+				</div>
+			)}
 			<div className="max-w-7xl mx-auto p-6 space-y-6">
 				{/* Header */}
 				<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -379,6 +441,27 @@ export function Knowledge() {
 								</button>
 							)}
 						</div>
+						<input
+							ref={fileInputRef}
+							type="file"
+							accept=".md,.txt,.json,.csv"
+							multiple
+							className="hidden"
+							onChange={(e) => {
+								if (e.target.files?.length) {
+									handleImportFiles(e.target.files);
+									e.target.value = "";
+								}
+							}}
+						/>
+						<Button
+							variant="outline"
+							onClick={() => fileInputRef.current?.click()}
+							disabled={importing}
+						>
+							<Upload className="h-4 w-4 mr-1" />
+							{importing ? "导入中..." : "导入"}
+						</Button>
 						<Button onClick={() => setShowNewDialog(true)}>
 							<Plus className="h-4 w-4 mr-1" />
 							新增
@@ -484,7 +567,9 @@ export function Knowledge() {
 								<div
 									className="fixed inset-0 z-10"
 									onClick={() => setShowTagFilter(false)}
-									onKeyDown={() => {}}
+									onKeyDown={(e) => {
+										if (e.key === "Escape") setShowTagFilter(false);
+									}}
 									role="presentation"
 								/>
 							)}

@@ -100,6 +100,11 @@ const agentSchema = z.object({
 		})
 		.default({}),
 	runtime: z.enum(["default", "claude-code"]).default("default"),
+	memory: z
+		.object({
+			sharedAccess: z.boolean().default(false),
+		})
+		.optional(),
 	claudeCode: z
 		.object({
 			allowedTools: z.array(z.string()).default(["Read", "Edit", "Write", "Bash", "Glob", "Grep"]),

@@ -240,10 +240,12 @@ export async function createToolset(opts: {
 			config: opts.config,
 			sessionKey: opts.sessionKey,
 		});
+		const agentConfig = opts.config.agents.find((a) => a.id === opts.agentId);
 		allTools.memory_search = createMemorySearchTool({
 			memoryStore: opts.memoryStore,
 			agentId: opts.agentId,
 			config: opts.config,
+			includeShared: agentConfig?.memory?.sharedAccess ?? false,
 		});
 		allTools.memory_delete = createMemoryDeleteTool({
 			memoryStore: opts.memoryStore,

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getRawDatabase } from "../db/sqlite";
 import { getGateway } from "../gateway";
+import { chunkCsv, chunkJson, chunkMarkdown, chunkPlainText } from "../memory/chunker";
 import { generateEmbedding } from "../memory/embeddings";
 
 export const memoryRoute = new Hono()
@@ -425,4 +426,73 @@ export const memoryRoute = new Hono()
 		}
 
 		return c.json({ deleted: true });
+	})
+	.post("/import", async (c) => {
+		const body = await c.req.parseBody();
+		const file = body.file;
+
+		if (!(file instanceof File)) {
+			return c.json({ error: "No file provided" }, 400);
+		}
+
+		const agentId = (body.agentId as string) || "main";
+		const tagsRaw = (body.tags as string) || "";
+		const tags = tagsRaw
+			.split(",")
+			.map((t) => t.trim())
+			.filter(Boolean);
+		const source = (body.source as string) || "import";
+
+		const filename = file.name.toLowerCase();
+		const text = await file.text();
+
+		let chunks: { title?: string; content: string }[];
+
+		if (filename.endsWith(".md")) {
+			chunks = chunkMarkdown(text);
+		} else if (filename.endsWith(".json")) {
+			try {
+				chunks = chunkJson(text);
+			} catch {
+				return c.json({ error: "Invalid JSON file" }, 400);
+			}
+		} else if (filename.endsWith(".csv")) {
+			chunks = chunkCsv(text);
+		} else if (filename.endsWith(".txt")) {
+			chunks = chunkPlainText(text);
+		} else {
+			return c.json({ error: "Unsupported file format. Supported: .md, .txt, .json, .csv" }, 400);
+		}
+
+		if (chunks.length === 0) {
+			return c.json({ imported: 0, chunks: 0 });
+		}
+
+		const gw = getGateway();
+		const config = gw.config.get();
+
+		let imported = 0;
+		for (const chunk of chunks) {
+			const entryTags = chunk.title ? [...tags, `title:${chunk.title}`] : [...tags];
+
+			let embedding: Float32Array | undefined;
+			if (config.memory.enabled) {
+				try {
+					embedding = await generateEmbedding(chunk.content, config);
+				} catch {
+					// Store without embedding
+				}
+			}
+
+			await gw.memories.store({
+				agentId,
+				content: chunk.content,
+				tags: entryTags.length > 0 ? entryTags : undefined,
+				source,
+				embedding,
+			});
+			imported++;
+		}
+
+		return c.json({ imported, chunks: chunks.length });
 	});
