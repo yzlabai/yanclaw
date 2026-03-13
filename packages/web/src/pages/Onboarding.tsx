@@ -6,6 +6,7 @@ import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
 import { useI18n } from "../i18n";
 import { API_BASE, apiFetch } from "../lib/api";
+import { ONBOARDING_DONE_KEY } from "../lib/constants";
 
 interface ProviderOption {
 	id: string;
@@ -323,8 +324,8 @@ export function Onboarding() {
 		availableModels.length === 0 && !loadingModels && !manualInput && !modelError;
 
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-background p-4">
-			<div className="w-full max-w-lg">
+		<div className="h-full overflow-y-auto flex items-start justify-center bg-background p-4">
+			<div className="w-full max-w-lg my-auto">
 				{/* Language toggle in top-right corner */}
 				<div className="flex justify-end mb-2">
 					<LanguageToggle />
@@ -346,9 +347,18 @@ export function Onboarding() {
 					{/* Step 1: Model Setup */}
 					{step === 1 && (
 						<div className="space-y-6 animate-fade-in-up">
-							<div>
-								<h2 className="text-xl font-bold mb-1">{t("onboarding.model.title")}</h2>
-								<p className="text-muted-foreground text-sm">{t("onboarding.model.subtitle")}</p>
+							<div className="flex items-center justify-between">
+								<div>
+									<h2 className="text-xl font-bold mb-1">{t("onboarding.model.title")}</h2>
+									<p className="text-muted-foreground text-sm">{t("onboarding.model.subtitle")}</p>
+								</div>
+								<button
+									type="button"
+									onClick={() => setStep(2)}
+									className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+								>
+									{t("common.skip")}
+								</button>
 							</div>
 
 							<div>
@@ -612,7 +622,14 @@ export function Onboarding() {
 							<div className="text-5xl">🎉</div>
 							<h2 className="text-2xl font-bold">{t("onboarding.complete.title")}</h2>
 							<p className="text-muted-foreground">{t("onboarding.complete.subtitle")}</p>
-							<Button size="lg" onClick={() => navigate("/")} className="rounded-xl">
+							<Button
+								size="lg"
+								onClick={() => {
+									localStorage.setItem(ONBOARDING_DONE_KEY, "true");
+									navigate("/");
+								}}
+								className="rounded-xl"
+							>
 								{t("common.enterApp")}
 							</Button>
 						</div>

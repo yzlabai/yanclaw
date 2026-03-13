@@ -27,7 +27,8 @@ import { LanguageToggle } from "./components/language-toggle";
 import { ThemeToggle } from "./components/theme-toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { I18nProvider, useI18n } from "./i18n";
-import { API_BASE, apiFetch } from "./lib/api";
+import { API_BASE } from "./lib/api";
+import { ONBOARDING_DONE_KEY } from "./lib/constants";
 import { isTauri, startGateway } from "./lib/tauri";
 import { Agents } from "./pages/Agents";
 import { Channels } from "./pages/Channels";
@@ -41,8 +42,8 @@ import { Skills } from "./pages/Skills";
 
 function SetupGuard({ children }: { children: React.ReactNode }) {
 	const location = useLocation();
-	const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
 	const [gatewayReady, setGatewayReady] = useState(false);
+	const onboardingDone = localStorage.getItem(ONBOARDING_DONE_KEY) === "true";
 
 	// One-time: start gateway in Tauri mode and wait for it to be ready
 	useEffect(() => {
@@ -55,7 +56,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 				}
 				for (let i = 0; i < 20; i++) {
 					try {
-						const r = await fetch(`${API_BASE}/api/system/setup`);
+						const r = await fetch(`${API_BASE}/api/system/health`);
 						if (r.ok) break;
 					} catch {
 						// not ready yet
@@ -68,22 +69,13 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 		init();
 	}, []);
 
-	// Re-check setup status whenever pathname changes (e.g. after onboarding completes)
-	useEffect(() => {
-		if (!gatewayReady) return;
-		apiFetch(`${API_BASE}/api/system/setup`)
-			.then((r) => r.json())
-			.then((data: { needsSetup: boolean }) => setNeedsSetup(data.needsSetup))
-			.catch(() => setNeedsSetup(false));
-	}, [gatewayReady]);
+	if (!gatewayReady) return null;
 
-	if (needsSetup === null) return null; // loading
-
-	if (needsSetup && location.pathname !== "/onboarding") {
+	if (!onboardingDone && location.pathname !== "/onboarding") {
 		return <Navigate to="/onboarding" replace />;
 	}
 
-	if (!needsSetup && location.pathname === "/onboarding") {
+	if (onboardingDone && location.pathname === "/onboarding") {
 		return <Navigate to="/" replace />;
 	}
 
