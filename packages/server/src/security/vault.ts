@@ -3,6 +3,15 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+/** Config field names that typically contain credentials. */
+export const CREDENTIAL_FIELDS = new Set([
+	"apiKey",
+	"token",
+	"botToken",
+	"appToken",
+	"signingSecret",
+]);
+
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;

@@ -271,7 +271,7 @@ packages/server/src/
 │   ├── sessions.ts               # 列出/查看/删除/导出
 │   ├── config.ts                 # GET (脱敏) / PATCH (深层合并)
 │   ├── cron.ts                   # CRUD + run
-│   ├── messages.ts               # 跨通道发送
+
 │   ├── media.ts                  # upload + serve
 │   ├── system.ts                 # health / status / version
 │   └── ws.ts                     # WebSocket 升级 + JSON-RPC 分发
@@ -293,7 +293,7 @@ const apiRoutes = app
   .route("/sessions", sessionsRoute)
   .route("/config", configRoute)
   .route("/cron", cronRoute)
-  .route("/messages", messagesRoute)
+
   .route("/media", mediaRoute)
   .route("/system", systemRoute)
   .route("/ws", wsRoute);

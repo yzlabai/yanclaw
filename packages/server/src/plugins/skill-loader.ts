@@ -1,8 +1,34 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { version as yanclawVersion } from "../../../package.json";
 import { detectInjection } from "../security/sanitize";
 import type { PluginDefinition } from "./types";
+
+/** Simple semver range check (supports >=x.y.z, ^x.y.z, ~x.y.z, x.y.z). */
+function satisfiesRange(version: string, range: string): boolean {
+	const parse = (v: string) => {
+		const m = v.match(/(\d+)\.(\d+)\.(\d+)/);
+		return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+	};
+
+	const cur = parse(version);
+	const req = parse(range);
+	if (!cur || !req) return true; // Can't parse → skip check
+
+	const [cM, cm, cp] = cur;
+	const [rM, rm, rp] = req;
+
+	if (range.startsWith(">=")) return cM > rM || (cM === rM && (cm > rm || (cm === rm && cp >= rp)));
+	if (range.startsWith("^")) {
+		// ^0.y.z locks minor (semver spec), ^x.y.z (x>0) locks major
+		if (rM === 0) return cM === 0 && cm === rm && cp >= rp;
+		return cM === rM && (cm > rm || (cm === rm && cp >= rp));
+	}
+	if (range.startsWith("~")) return cM === rM && cm === rm && cp >= rp;
+	// Exact match
+	return cM === rM && cm === rm && cp === rp;
+}
 
 /** Skill manifest schema — validated from skill.json. */
 const skillConfigFieldSchema = z.object({
@@ -146,9 +172,11 @@ export class SkillLoader {
 			}
 		}
 
-		// Version check is informational only
+		// Version compatibility check (informational — warns but does not block loading)
 		if (manifest.requires.yanclaw) {
-			// TODO: compare against actual YanClaw version
+			if (!satisfiesRange(yanclawVersion, manifest.requires.yanclaw)) {
+				warnings.push(`Requires YanClaw ${manifest.requires.yanclaw}, current ${yanclawVersion}`);
+			}
 		}
 	}
 

@@ -31,8 +31,8 @@ export function checkDmPolicy(msg: InboundMessage, config: Config): DmPolicyResu
 		}
 
 		case "pairing":
-			// TODO: implement pairing code verification
-			// For now, check allowFrom as a paired list
+			// Pairing code flow not yet implemented — behaves as senderId allowlist.
+			// See: docs/plans/2026-03-13-code-cleanup-plan.md §3
 			if (account.allowFrom.includes(msg.senderId)) return "allowed";
 			return "pairing-required";
 

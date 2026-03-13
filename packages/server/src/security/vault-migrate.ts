@@ -9,10 +9,7 @@
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import JSON5 from "json5";
 import { resolveConfigPath, resolveDataDir } from "../config/store";
-import { CredentialVault } from "./vault";
-
-/** Fields that likely contain credentials. */
-const CREDENTIAL_FIELDS = new Set(["apiKey", "token", "botToken", "appToken", "signingSecret"]);
+import { CREDENTIAL_FIELDS, CredentialVault } from "./vault";
 
 interface FoundCredential {
 	path: string; // e.g. "models.anthropic.profiles[0].apiKey"

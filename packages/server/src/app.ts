@@ -13,7 +13,7 @@ import { cronRoute } from "./routes/cron";
 import { mcpRoute } from "./routes/mcp";
 import { mediaRoute } from "./routes/media";
 import { memoryRoute } from "./routes/memory";
-import { messagesRoute } from "./routes/messages";
+
 import { modelsRoute } from "./routes/models";
 import { pluginsRoute } from "./routes/plugins";
 import { sessionsRoute } from "./routes/sessions";
@@ -54,7 +54,7 @@ const apiRoutes = app
 	.route("/mcp", mcpRoute)
 	.route("/media", mediaRoute)
 	.route("/memory", memoryRoute)
-	.route("/messages", messagesRoute)
+
 	.route("/models", modelsRoute)
 	.route("/plugins", pluginsRoute)
 	.route("/skills", skillsRoute)

@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import JSON5 from "json5";
-import { CredentialVault, expandVaultRefs } from "../security/vault";
+import { CREDENTIAL_FIELDS, CredentialVault, expandVaultRefs } from "../security/vault";
 import { type Config, configSchema } from "./schema";
 
 export function resolveDataDir(): string {
@@ -73,6 +73,36 @@ export function migrateConfig(raw: unknown): unknown {
 	}
 	obj.models = { providers };
 	return raw;
+}
+
+/** Count plaintext credentials in config and warn if found. */
+function detectPlaintextCredentials(obj: unknown): void {
+	const count = countPlaintext(obj);
+	if (count > 0) {
+		console.warn(
+			`[config] ⚠️  Detected ${count} plaintext credential(s). Run: bun run packages/server/src/security/vault-migrate.ts`,
+		);
+	}
+}
+
+function countPlaintext(obj: unknown): number {
+	if (obj === null || obj === undefined) return 0;
+	if (Array.isArray(obj)) return obj.reduce((n, item) => n + countPlaintext(item), 0);
+	if (typeof obj !== "object") return 0;
+	let count = 0;
+	for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+		if (
+			CREDENTIAL_FIELDS.has(key) &&
+			typeof value === "string" &&
+			value.length > 0 &&
+			!value.startsWith("$vault:") &&
+			!value.startsWith("${")
+		) {
+			count++;
+		}
+		count += countPlaintext(value);
+	}
+	return count;
 }
 
 function expandEnvVars(obj: unknown): unknown {
@@ -178,6 +208,9 @@ export class ConfigStore {
 
 		// Migrate old config format before validation
 		raw = migrateConfig(raw);
+
+		// Warn if plaintext credentials are detected
+		detectPlaintextCredentials(raw);
 
 		// Expand env vars first, then vault refs
 		let expanded = expandEnvVars(raw);
