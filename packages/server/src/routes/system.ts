@@ -1,5 +1,6 @@
 import { APP_NAME, VERSION } from "@yanclaw/shared/constants";
 import { Hono } from "hono";
+import { clearWebCache } from "../agents/tools/web";
 import { getGateway } from "../gateway";
 
 const startedAt = Date.now();
@@ -82,6 +83,7 @@ export const systemRoute = new Hono()
 			await gw.channelManager.disconnectAll();
 			gw.channelManager.stopHealthMonitor();
 			gw.cronService.stop();
+			clearWebCache();
 			process.exit(0);
 		}, 100);
 

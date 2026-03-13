@@ -208,8 +208,16 @@ export async function createToolset(opts: {
 			sessionKey: opts.sessionKey,
 		}),
 		file_edit: createFileEditTool({ workspaceDir }),
-		web_fetch: createWebFetchTool({ maxOutput, network: opts.config?.security?.network }),
-		web_search: createWebSearchTool({ maxOutput }),
+		web_fetch: createWebFetchTool({
+			maxOutput,
+			network: opts.config?.security?.network,
+			readability: toolsConfig.web?.fetch?.readability,
+			cacheTtlMinutes: toolsConfig.web?.fetch?.cacheTtlMinutes,
+		}),
+		web_search: createWebSearchTool({
+			maxOutput,
+			search: toolsConfig.web?.search,
+		}),
 		browser_navigate: createBrowserNavigateTool({ maxOutput }),
 		browser_screenshot: createBrowserScreenshotTool(),
 		browser_action: createBrowserActionTool(),

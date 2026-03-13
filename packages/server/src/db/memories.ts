@@ -297,7 +297,7 @@ function applyTemporalDecay(
 
 	return results
 		.map((r) => {
-			const ageDays = (now - r.createdAt) / (1000 * 60 * 60 * 24);
+			const ageDays = (now - r.updatedAt) / (1000 * 60 * 60 * 24);
 			const decay = Math.exp(-lambda * ageDays);
 			return { ...r, score: r.score * (0.3 + 0.7 * decay) }; // Floor at 30% to avoid zeroing old memories
 		})

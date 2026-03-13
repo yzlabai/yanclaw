@@ -217,6 +217,23 @@ const toolsSchema = z
 				maxOutputChars: z.number().default(50_000),
 			})
 			.default({}),
+		web: z
+			.object({
+				search: z
+					.object({
+						providers: z.array(z.string()).optional(),
+						tavily: z.object({ apiKey: z.string().optional() }).optional(),
+						brave: z.object({ apiKey: z.string().optional() }).optional(),
+					})
+					.optional(),
+				fetch: z
+					.object({
+						readability: z.boolean().optional(),
+						cacheTtlMinutes: z.number().optional(),
+					})
+					.optional(),
+			})
+			.optional(),
 		byChannel: z
 			.record(
 				z.object({

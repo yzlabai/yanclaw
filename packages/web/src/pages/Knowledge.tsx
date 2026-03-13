@@ -228,10 +228,14 @@ export function Knowledge() {
 			.split(",")
 			.map((t) => t.trim())
 			.filter(Boolean);
-		await apiFetch(`${API_BASE}/api/memory`, {
+		const res = await apiFetch(`${API_BASE}/api/memory`, {
 			method: "POST",
 			body: JSON.stringify({ agentId: "main", content: newContent.trim(), tags }),
 		});
+		if (!res.ok) {
+			console.error(`Create memory failed: ${res.status}`);
+			return;
+		}
 		setShowNewDialog(false);
 		setNewContent("");
 		setNewTags("");
@@ -245,10 +249,14 @@ export function Knowledge() {
 			.split(",")
 			.map((t) => t.trim())
 			.filter(Boolean);
-		await apiFetch(`${API_BASE}/api/memory/${detailMemory.id}`, {
+		const res = await apiFetch(`${API_BASE}/api/memory/${detailMemory.id}`, {
 			method: "PATCH",
 			body: JSON.stringify({ content: editContent.trim(), tags }),
 		});
+		if (!res.ok) {
+			console.error(`Update memory failed: ${res.status}`);
+			return;
+		}
 		setDetailMemory(null);
 		setEditMode(false);
 		fetchMemories();
@@ -256,7 +264,11 @@ export function Knowledge() {
 	};
 
 	const handleDelete = async (id: string) => {
-		await apiFetch(`${API_BASE}/api/memory/${id}`, { method: "DELETE" });
+		const res = await apiFetch(`${API_BASE}/api/memory/${id}`, { method: "DELETE" });
+		if (!res.ok) {
+			console.error(`Delete memory failed: ${res.status}`);
+			return;
+		}
 		setDetailMemory(null);
 		fetchMemories();
 		refreshStats();
@@ -264,10 +276,14 @@ export function Knowledge() {
 
 	const handleBatchDelete = async () => {
 		if (selectedIds.size === 0) return;
-		await apiFetch(`${API_BASE}/api/memory/batch`, {
+		const res = await apiFetch(`${API_BASE}/api/memory/batch`, {
 			method: "DELETE",
 			body: JSON.stringify({ ids: [...selectedIds] }),
 		});
+		if (!res.ok) {
+			console.error(`Batch delete failed: ${res.status}`);
+			return;
+		}
 		setSelectedIds(new Set());
 		fetchMemories();
 		refreshStats();
@@ -284,10 +300,14 @@ export function Knowledge() {
 			.map((t) => t.trim())
 			.filter(Boolean);
 		if (addTags.length === 0 && removeTags.length === 0) return;
-		await apiFetch(`${API_BASE}/api/memory/batch/tags`, {
+		const res = await apiFetch(`${API_BASE}/api/memory/batch/tags`, {
 			method: "PATCH",
 			body: JSON.stringify({ ids: [...selectedIds], addTags, removeTags }),
 		});
+		if (!res.ok) {
+			console.error(`Batch tags failed: ${res.status}`);
+			return;
+		}
 		setShowBatchTagDialog(false);
 		setBatchAddTags("");
 		setBatchRemoveTags("");
