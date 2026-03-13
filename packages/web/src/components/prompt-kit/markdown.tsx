@@ -1,7 +1,11 @@
 import { memo, useId, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import { cn } from "../../lib/utils";
+import { MermaidBlock } from "./mermaid-block";
 
 export type MarkdownProps = {
 	children: string;
@@ -22,6 +26,12 @@ const INITIAL_COMPONENTS: Partial<Components> = {
 					{children}
 				</code>
 			);
+		}
+
+		// Detect mermaid code blocks
+		if (className?.includes("language-mermaid")) {
+			const source = String(children).replace(/\n$/, "");
+			return <MermaidBlock source={source} />;
 		}
 
 		return (
@@ -46,7 +56,11 @@ const MemoizedMarkdownBlock = memo(
 		components?: Partial<Components>;
 	}) {
 		return (
-			<ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm, remarkMath]}
+				rehypePlugins={[rehypeKatex, rehypeHighlight]}
+				components={components}
+			>
 				{content}
 			</ReactMarkdown>
 		);
@@ -66,7 +80,49 @@ function MarkdownComponent({
 }: MarkdownProps) {
 	const generatedId = useId();
 	const blockId = id ?? generatedId;
-	const blocks = useMemo(() => children.split(/\n\n+/), [children]);
+	const blocks = useMemo(() => {
+		const result: string[] = [];
+		let current = "";
+		let inFence = false;
+		let inMath = false;
+
+		for (const line of children.split("\n")) {
+			if (!inFence && !inMath && line.startsWith("```")) {
+				if (current.trim()) result.push(current);
+				current = `${line}\n`;
+				inFence = true;
+			} else if (inFence) {
+				current += `${line}\n`;
+				if (line.startsWith("```")) {
+					result.push(current);
+					current = "";
+					inFence = false;
+				}
+			} else if (!inFence && !inMath && line.startsWith("$$")) {
+				if (current.trim()) result.push(current);
+				current = `${line}\n`;
+				if (!line.endsWith("$$") || line === "$$") {
+					inMath = true;
+				} else {
+					result.push(current);
+					current = "";
+				}
+			} else if (inMath) {
+				current += `${line}\n`;
+				if (line.startsWith("$$")) {
+					result.push(current);
+					current = "";
+					inMath = false;
+				}
+			} else if (line === "") {
+				current += "\n";
+			} else {
+				current += `${line}\n`;
+			}
+		}
+		if (current.trim()) result.push(current);
+		return result;
+	}, [children]);
 
 	return (
 		<div className={className}>
