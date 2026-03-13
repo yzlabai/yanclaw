@@ -235,6 +235,41 @@ export class SessionStore {
 		return count;
 	}
 
+	/** Get the latest user message content for a session (for steering context). */
+	getLatestUserMessage(sessionKey: string): string | null {
+		const db = getDb();
+		const row = db
+			.select({ content: messages.content })
+			.from(messages)
+			.where(and(eq(messages.sessionKey, sessionKey), eq(messages.role, "user")))
+			.orderBy(desc(messages.createdAt))
+			.limit(1)
+			.get();
+		return row?.content ?? null;
+	}
+
+	/** Get recent messages as CoreMessage format for LLM context. */
+	getRecentMessages(
+		sessionKey: string,
+		limit = 20,
+	): Array<{ role: "user" | "assistant"; content: string }> {
+		const db = getDb();
+		const rows = db
+			.select({ role: messages.role, content: messages.content })
+			.from(messages)
+			.where(eq(messages.sessionKey, sessionKey))
+			.orderBy(desc(messages.createdAt))
+			.limit(limit)
+			.all();
+		return rows
+			.filter((r) => (r.role === "user" || r.role === "assistant") && r.content)
+			.reverse()
+			.map((r) => ({
+				role: r.role as "user" | "assistant",
+				content: r.content ?? "",
+			}));
+	}
+
 	/** Delete sessions not updated in the last `days` days. Returns number of sessions deleted. */
 	pruneStale(days: number): number {
 		if (days <= 0) return 0;

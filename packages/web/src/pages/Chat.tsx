@@ -72,6 +72,15 @@ export function Chat() {
 	const [currentAgent, setCurrentAgent] = useState("main");
 	const [currentSession, setCurrentSession] = useState<string | null>(null);
 	const [showSidebar, setShowSidebar] = useState(false);
+	const [asideToast, setAsideToast] = useState<{ question: string; answer: string } | null>(null);
+	const asideTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+	useEffect(
+		() => () => {
+			if (asideTimerRef.current) clearTimeout(asideTimerRef.current);
+		},
+		[],
+	);
 
 	useEffect(() => {
 		apiFetch(`${API_BASE}/api/agents`)
@@ -203,7 +212,19 @@ export function Chat() {
 			setMessages((prev) => [...prev, { role: "user", content: text, isPending: true }]);
 			try {
 				const result = await steerChat(sessionKey, text);
-				if (result.intent === "cancel") {
+				if (result.intent === "aside") {
+					// Aside: remove the pending message (not part of main conversation)
+					setMessages((prev) => {
+						if (prev[prev.length - 1]?.isPending) return prev.slice(0, -1);
+						return prev;
+					});
+					// Show answer as temporary toast
+					if (result.answer) {
+						if (asideTimerRef.current) clearTimeout(asideTimerRef.current);
+						setAsideToast({ question: text, answer: result.answer });
+						asideTimerRef.current = setTimeout(() => setAsideToast(null), 15_000);
+					}
+				} else if (result.intent === "cancel") {
 					// Mark the pending message as no longer pending
 					setMessages((prev) => {
 						const updated = [...prev];
@@ -720,6 +741,27 @@ export function Chat() {
 					</ChatContainerContent>
 					<ScrollButton />
 				</ChatContainerRoot>
+
+				{/* Aside toast — ephemeral side-question answer */}
+				{asideToast && (
+					<div className="mx-4 mb-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm p-3 shadow-lg animate-in slide-in-from-bottom-2">
+						<div className="flex items-start justify-between gap-2">
+							<div className="min-w-0 flex-1">
+								<p className="text-xs text-muted-foreground mb-1 truncate">{asideToast.question}</p>
+								<p className="text-sm text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
+									{asideToast.answer}
+								</p>
+							</div>
+							<button
+								type="button"
+								onClick={() => setAsideToast(null)}
+								className="text-muted-foreground hover:text-foreground shrink-0"
+							>
+								<X className="h-3.5 w-3.5" />
+							</button>
+						</div>
+					</div>
+				)}
 
 				{/* Input */}
 				<div className="border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">

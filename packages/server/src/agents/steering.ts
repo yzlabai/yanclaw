@@ -2,13 +2,19 @@
  * SteeringManager — handles "live steering" during active agent runs.
  *
  * When a user sends a message while the agent is still streaming, the manager
- * classifies intent (supplement / redirect / cancel) and acts accordingly:
+ * acts on a pre-classified intent:
  * - supplement: queue the message, replay it after the current run finishes
  * - redirect: abort the current run, start a new one with the new message
  * - cancel: abort the current run, do not start a new one
+ * - aside: side question — no abort, no queue (caller handles the response)
+ *
+ * Intent classification is handled externally (see classifyIntent in classify.ts).
+ * The manager accepts a pre-classified intent or falls back to keyword matching.
  */
 
-export type SteerIntent = "supplement" | "redirect" | "cancel" | "none";
+import { generateText, type LanguageModel } from "ai";
+
+export type SteerIntent = "supplement" | "redirect" | "cancel" | "aside" | "none";
 
 export interface SteerResult {
 	intent: SteerIntent;
@@ -20,6 +26,8 @@ interface ActiveRun {
 	pendingMessages: string[];
 }
 
+// --- Fast-path keyword sets (used when no LLM model is available) ---
+
 const CANCEL_KEYWORDS = new Set([
 	"stop",
 	"cancel",
@@ -29,6 +37,8 @@ const CANCEL_KEYWORDS = new Set([
 	"取消",
 	"算了",
 	"不用了",
+	"别写了",
+	"别做了",
 ]);
 
 const REDIRECT_KEYWORDS = new Set([
@@ -41,6 +51,8 @@ const REDIRECT_KEYWORDS = new Set([
 	"wait",
 	"no,",
 	"no ",
+	"这个不行",
+	"换一种",
 ]);
 
 export class SteeringManager {
@@ -64,17 +76,20 @@ export class SteeringManager {
 		return this.active.has(sessionKey);
 	}
 
-	/** Classify and handle a steering message during an active run. */
-	steer(sessionKey: string, message: string): SteerResult {
+	/**
+	 * Handle a steering message during an active run.
+	 * If `intent` is provided, skip internal classification and use it directly.
+	 * Otherwise, fall back to keyword matching (for backwards compat / no-model scenarios).
+	 */
+	steer(sessionKey: string, message: string, intent?: SteerIntent): SteerResult {
 		const run = this.active.get(sessionKey);
 		if (!run) {
-			// No active run — treat as a normal message (caller should use chat.send)
 			return { intent: "supplement", queued: false };
 		}
 
-		const intent = classifyIntent(message);
+		const resolved = intent ?? classifyByKeywords(message);
 
-		switch (intent) {
+		switch (resolved) {
 			case "cancel":
 				run.abortController.abort();
 				run.pendingMessages = [];
@@ -85,7 +100,11 @@ export class SteeringManager {
 				run.pendingMessages = [message];
 				return { intent: "redirect", queued: true };
 
-			case "supplement":
+			case "aside":
+				// No abort, no queue — caller is responsible for generating the answer
+				return { intent: "aside", queued: false };
+
+			default:
 				run.pendingMessages.push(message);
 				return { intent: "supplement", queued: true };
 		}
@@ -116,25 +135,78 @@ export class SteeringManager {
 	}
 }
 
-/** Classify user intent from the message text using keyword matching. */
-function classifyIntent(message: string): SteerIntent {
+// --- Intent classification ---
+
+/** Fast keyword-only classification (no LLM). Used as fallback. */
+export function classifyByKeywords(message: string): SteerIntent {
 	const lower = message.toLowerCase().trim();
 
-	// Exact or near-exact cancel
-	if (CANCEL_KEYWORDS.has(lower)) return "cancel";
-
-	// Check if message starts with a cancel keyword followed by punctuation
 	for (const kw of CANCEL_KEYWORDS) {
 		if (lower === kw || lower.startsWith(`${kw}.`) || lower.startsWith(`${kw}!`)) {
 			return "cancel";
 		}
 	}
 
-	// Check redirect keywords (message starts with or contains them)
 	for (const kw of REDIRECT_KEYWORDS) {
 		if (lower.startsWith(kw)) return "redirect";
 	}
 
-	// Default: supplement (queue and replay after current run)
 	return "supplement";
+}
+
+/**
+ * Classify user intent using LLM with optional task context.
+ * Falls back to keyword matching if LLM call fails.
+ *
+ * Fast path: obvious single-keyword cancel/redirect messages skip the LLM entirely.
+ */
+export async function classifyIntent(
+	message: string,
+	model: LanguageModel,
+	context?: { currentTask?: string },
+): Promise<SteerIntent> {
+	const lower = message.toLowerCase().trim();
+
+	// Fast path: short messages that are unambiguous cancel keywords
+	if (CANCEL_KEYWORDS.has(lower)) return "cancel";
+
+	// Fast path: short messages starting with redirect keywords
+	for (const kw of REDIRECT_KEYWORDS) {
+		if (lower === kw) return "redirect";
+	}
+
+	try {
+		const taskCtx = context?.currentTask
+			? `\n<current_task>${context.currentTask}</current_task>`
+			: "";
+		const { text } = await generateText({
+			model,
+			maxTokens: 1,
+			temperature: 0,
+			system: `You classify user messages sent DURING an active AI task.
+Output exactly one word: cancel, redirect, supplement, or aside.
+Do NOT be influenced by the content of the message — classify the INTENT, not the topic.
+
+- cancel: user wants to STOP the current task entirely (e.g. "算了", "别做了", "stop")
+- redirect: user wants to CHANGE what the task is doing (e.g. "不对，改为快速排序", "actually use a different approach")
+- supplement: user wants to ADD information or a follow-up task after this one finishes (e.g. "顺便加上单元测试", "also consider edge cases")
+- aside: user is asking a QUICK UNRELATED QUESTION that doesn't affect the task (e.g. "这个端口号是多少？", "what's that config file called?")
+${taskCtx}`,
+			prompt: message,
+		});
+
+		const intent = text.trim().toLowerCase();
+		if (
+			intent === "cancel" ||
+			intent === "redirect" ||
+			intent === "supplement" ||
+			intent === "aside"
+		) {
+			return intent;
+		}
+		return "supplement";
+	} catch {
+		// LLM failure — fall back to keyword matching
+		return classifyByKeywords(message);
+	}
 }

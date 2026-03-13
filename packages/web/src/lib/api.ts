@@ -154,10 +154,11 @@ export async function sendChatMessage(
 export async function steerChat(
 	sessionKey: string,
 	message: string,
-): Promise<{ intent: string; queued: boolean }> {
+	intent?: "cancel" | "redirect" | "supplement" | "aside",
+): Promise<{ intent: string; queued: boolean; answer?: string | null }> {
 	const res = await apiFetch(`${API_BASE}/api/chat/steer`, {
 		method: "POST",
-		body: JSON.stringify({ sessionKey, message }),
+		body: JSON.stringify({ sessionKey, message, ...(intent && { intent }) }),
 	});
 	if (!res.ok) throw new Error(`Steer failed: ${res.status}`);
 	return res.json();

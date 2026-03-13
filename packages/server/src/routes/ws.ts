@@ -1,6 +1,8 @@
+import { generateText } from "ai";
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import type { WSContext } from "hono/ws";
+import { classifyIntent, type SteerIntent } from "../agents/steering";
 import { getGateway } from "../gateway";
 import { wsTicketStore } from "../security/ws-ticket";
 import { chatSteering } from "./chat";
@@ -186,6 +188,10 @@ export const wsRoute = new Hono()
 							case "chat.steer": {
 								const sessionKey = String(params?.sessionKey ?? "");
 								const message = String(params?.message ?? "");
+								const validIntents = new Set(["cancel", "redirect", "supplement", "aside"]);
+								const rawIntent = params?.intent as string | undefined;
+								const explicitIntent =
+									rawIntent && validIntents.has(rawIntent) ? (rawIntent as SteerIntent) : undefined;
 
 								if (!sessionKey || !message) {
 									ws.send(jsonRpcError(id, -32602, "Missing sessionKey or message"));
@@ -193,16 +199,45 @@ export const wsRoute = new Hono()
 								}
 
 								if (!chatSteering.isActive(sessionKey)) {
-									ws.send(
-										jsonRpcResult(id, {
-											intent: "none",
-											queued: false,
-										}),
-									);
+									ws.send(jsonRpcResult(id, { intent: "none", queued: false }));
 									return;
 								}
 
-								const result = chatSteering.steer(sessionKey, message);
+								const config = gw.config.get();
+
+								// Classify intent: use explicit if provided, otherwise LLM
+								let intent: SteerIntent;
+								if (explicitIntent) {
+									intent = explicitIntent;
+								} else {
+									const classifyModel = gw.modelManager.resolve("classify", "fast", config);
+									const lastUserMsg = gw.sessions.getLatestUserMessage(sessionKey);
+									intent = await classifyIntent(message, classifyModel, {
+										currentTask: lastUserMsg?.slice(0, 200),
+									});
+								}
+
+								// Handle aside: generate quick answer, send via separate event
+								if (intent === "aside") {
+									const steerResult = chatSteering.steer(sessionKey, message, "aside");
+									try {
+										const asideModel = gw.modelManager.resolve("aside", "fast", config);
+										const history = gw.sessions.getRecentMessages(sessionKey, 20);
+										const { text } = await generateText({
+											model: asideModel,
+											system:
+												"Answer the user's side question briefly based on conversation context. You have no tools. Be concise.",
+											messages: [...history, { role: "user" as const, content: message }],
+											maxTokens: 200,
+										});
+										ws.send(jsonRpcResult(id, { ...steerResult, answer: text }));
+									} catch {
+										ws.send(jsonRpcResult(id, { ...steerResult, answer: null }));
+									}
+									break;
+								}
+
+								const result = chatSteering.steer(sessionKey, message, intent);
 								ws.send(jsonRpcResult(id, result));
 								break;
 							}
@@ -210,7 +245,7 @@ export const wsRoute = new Hono()
 							case "chat.cancel": {
 								const sessionKey = String(params?.sessionKey ?? "");
 								if (sessionKey && chatSteering.isActive(sessionKey)) {
-									chatSteering.steer(sessionKey, "cancel");
+									chatSteering.steer(sessionKey, "cancel", "cancel");
 								}
 								ws.send(jsonRpcResult(id, { cancelled: true }));
 								break;
