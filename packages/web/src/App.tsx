@@ -23,8 +23,10 @@ import {
 	useLocation,
 } from "react-router-dom";
 import { Toaster } from "sonner";
+import { LanguageToggle } from "./components/language-toggle";
 import { ThemeToggle } from "./components/theme-toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
+import { I18nProvider, useI18n } from "./i18n";
 import { API_BASE, apiFetch } from "./lib/api";
 import { isTauri, startGateway } from "./lib/tauri";
 import { Agents } from "./pages/Agents";
@@ -89,19 +91,20 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 }
 
 const NAV_ITEMS = [
-	{ to: "/", label: "聊天", icon: MessageSquare },
-	{ to: "/sessions", label: "会话", icon: History },
-	{ to: "/agents", label: "Agent", icon: Bot },
-	{ to: "/channels", label: "频道", icon: Radio },
-	{ to: "/skills", label: "Skills", icon: Puzzle },
-	{ to: "/mcp", label: "MCP", icon: Plug },
-	{ to: "/cron", label: "定时任务", icon: Clock },
-	{ to: "/settings", label: "设置", icon: SettingsIcon },
+	{ to: "/", labelKey: "nav.chat", icon: MessageSquare },
+	{ to: "/sessions", labelKey: "nav.sessions", icon: History },
+	{ to: "/agents", labelKey: "nav.agents", icon: Bot },
+	{ to: "/channels", labelKey: "nav.channels", icon: Radio },
+	{ to: "/skills", labelKey: "nav.skills", icon: Puzzle },
+	{ to: "/mcp", labelKey: "nav.mcp", icon: Plug },
+	{ to: "/cron", labelKey: "nav.cron", icon: Clock },
+	{ to: "/settings", labelKey: "nav.settings", icon: SettingsIcon },
 ];
 
 function AppLayout() {
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const { pathname } = useLocation();
+	const { t } = useI18n();
 
 	const [collapsed, setCollapsed] = useState(() => {
 		return localStorage.getItem("yanclaw_sidebar_collapsed") === "true";
@@ -134,6 +137,7 @@ function AppLayout() {
 
 					{NAV_ITEMS.map((item) => {
 						const Icon = item.icon;
+						const label = t(item.labelKey);
 						return collapsed ? (
 							<Tooltip key={item.to}>
 								<TooltipTrigger asChild>
@@ -151,7 +155,7 @@ function AppLayout() {
 										<Icon className="h-5 w-5" />
 									</NavLink>
 								</TooltipTrigger>
-								<TooltipContent side="right">{item.label}</TooltipContent>
+								<TooltipContent side="right">{label}</TooltipContent>
 							</Tooltip>
 						) : (
 							<NavLink
@@ -167,13 +171,18 @@ function AppLayout() {
 								}
 							>
 								<Icon className="h-5 w-5" />
-								<span>{item.label}</span>
+								<span>{label}</span>
 							</NavLink>
 						);
 					})}
 
 					<div className="mt-auto pt-2 border-t border-border flex flex-col gap-1">
-						{!collapsed && <ThemeToggle />}
+						{!collapsed && (
+							<>
+								<ThemeToggle />
+								<LanguageToggle />
+							</>
+						)}
 						<button
 							type="button"
 							onClick={toggleCollapsed}
@@ -231,12 +240,13 @@ function AppLayout() {
 							}
 						>
 							<Icon className="h-5 w-5" />
-							<span>{item.label}</span>
+							<span>{t(item.labelKey)}</span>
 						</NavLink>
 					);
 				})}
-				<div className="mt-auto pt-2 border-t border-border">
+				<div className="mt-auto pt-2 border-t border-border flex flex-col gap-1">
 					<ThemeToggle />
+					<LanguageToggle />
 				</div>
 			</nav>
 
@@ -275,11 +285,13 @@ function AppLayout() {
 export function App() {
 	const Router = isTauri() ? HashRouter : BrowserRouter;
 	return (
-		<Router>
-			<SetupGuard>
-				<AppLayout />
-			</SetupGuard>
-			<Toaster position="bottom-right" />
-		</Router>
+		<I18nProvider>
+			<Router>
+				<SetupGuard>
+					<AppLayout />
+				</SetupGuard>
+				<Toaster position="bottom-right" />
+			</Router>
+		</I18nProvider>
 	);
 }

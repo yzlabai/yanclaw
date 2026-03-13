@@ -1,0 +1,74 @@
+{
+	"common": {
+		"save": "保存",
+		"cancel": "取消",
+		"saving": "保存中...",
+		"saveAndContinue": "保存并继续",
+		"previous": "上一步",
+		"skip": "跳过",
+		"optional": "可选",
+		"verify": "验证",
+		"enterApp": "进入应用",
+		"loading": "加载中..."
+	},
+	"nav": {
+		"chat": "聊天",
+		"sessions": "会话",
+		"agents": "Agent",
+		"channels": "频道",
+		"skills": "Skills",
+		"mcp": "MCP",
+		"cron": "定时任务",
+		"settings": "设置"
+	},
+	"theme": {
+		"system": "跟随系统",
+		"light": "浅色",
+		"dark": "深色"
+	},
+	"language": {
+		"label": "语言",
+		"zh": "中文",
+		"en": "English"
+	},
+	"onboarding": {
+		"welcome": {
+			"title": "欢迎使用 YanClaw",
+			"subtitle": "AI Agent 网关平台，连接聊天频道与 AI Agent",
+			"start": "开始配置"
+		},
+		"model": {
+			"title": "模型配置",
+			"subtitle": "选择 AI 模型提供商并输入 API Key",
+			"providerLabel": "选择提供商",
+			"apiKeyLabel": "API Key",
+			"baseUrlLabel": "API Base URL",
+			"defaultModelLabel": "默认模型",
+			"fetchModels": "验证并获取模型",
+			"fetchFailed": "获取模型列表失败",
+			"manualInput": "手动输入",
+			"selectFromList": "从列表选择",
+			"manualInputModelId": "手动输入模型 ID"
+		},
+		"channels": {
+			"title": "频道配置",
+			"subtitle": "可选配置消息频道，也可以稍后在设置中配置。",
+			"telegramBot": "Telegram Bot",
+			"slackBot": "Slack Bot"
+		},
+		"complete": {
+			"title": "配置完成！",
+			"subtitle": "一切就绪，开始使用 YanClaw"
+		}
+	},
+	"providers": {
+		"anthropic": { "name": "Anthropic", "description": "Claude 系列模型" },
+		"openai": { "name": "OpenAI", "description": "GPT / o 系列模型" },
+		"google": { "name": "Google", "description": "Gemini 系列模型" },
+		"deepseek": { "name": "DeepSeek", "description": "DeepSeek 系列模型" },
+		"mistral": { "name": "Mistral", "description": "Mistral 系列模型" },
+		"volcengine": { "name": "火山方舟", "description": "字节跳动云端模型" },
+		"ollama": { "name": "Ollama", "description": "本地部署开源模型" },
+		"custom": { "name": "自定义", "description": "OpenAI 兼容 API" }
+	}
+}

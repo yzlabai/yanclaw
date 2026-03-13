@@ -1,0 +1,74 @@
+{
+	"common": {
+		"save": "Save",
+		"cancel": "Cancel",
+		"saving": "Saving...",
+		"saveAndContinue": "Save & Continue",
+		"previous": "Previous",
+		"skip": "Skip",
+		"optional": "optional",
+		"verify": "Verify",
+		"enterApp": "Enter App",
+		"loading": "Loading..."
+	},
+	"nav": {
+		"chat": "Chat",
+		"sessions": "Sessions",
+		"agents": "Agents",
+		"channels": "Channels",
+		"skills": "Skills",
+		"mcp": "MCP",
+		"cron": "Cron Jobs",
+		"settings": "Settings"
+	},
+	"theme": {
+		"system": "System",
+		"light": "Light",
+		"dark": "Dark"
+	},
+	"language": {
+		"label": "Language",
+		"zh": "中文",
+		"en": "English"
+	},
+	"onboarding": {
+		"welcome": {
+			"title": "Welcome to YanClaw",
+			"subtitle": "AI Agent gateway platform — bridge chat channels with AI agents",
+			"start": "Get Started"
+		},
+		"model": {
+			"title": "Model Setup",
+			"subtitle": "Choose an AI model provider and enter your API key",
+			"providerLabel": "Select Provider",
+			"apiKeyLabel": "API Key",
+			"baseUrlLabel": "API Base URL",
+			"defaultModelLabel": "Default Model",
+			"fetchModels": "Verify & Fetch Models",
+			"fetchFailed": "Failed to fetch model list",
+			"manualInput": "Manual input",
+			"selectFromList": "Select from list",
+			"manualInputModelId": "Enter model ID manually"
+		},
+		"channels": {
+			"title": "Channel Setup",
+			"subtitle": "Optionally configure chat channels. You can also do this later in Settings.",
+			"telegramBot": "Telegram Bot",
+			"slackBot": "Slack Bot"
+		},
+		"complete": {
+			"title": "All Set!",
+			"subtitle": "Everything is ready — start using YanClaw"
+		}
+	},
+	"providers": {
+		"anthropic": { "name": "Anthropic", "description": "Claude model family" },
+		"openai": { "name": "OpenAI", "description": "GPT / o model family" },
+		"google": { "name": "Google", "description": "Gemini model family" },
+		"deepseek": { "name": "DeepSeek", "description": "DeepSeek models" },
+		"mistral": { "name": "Mistral", "description": "Mistral models" },
+		"volcengine": { "name": "VolcEngine", "description": "ByteDance cloud models" },
+		"ollama": { "name": "Ollama", "description": "Local open-source models" },
+		"custom": { "name": "Custom", "description": "OpenAI-compatible API" }
+	}
+}
