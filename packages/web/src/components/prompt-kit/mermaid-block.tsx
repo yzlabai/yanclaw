@@ -1,16 +1,17 @@
-import mermaid from "mermaid";
 import { useEffect, useId, useRef, useState } from "react";
 
-let mermaidInitialized = false;
+let mermaidModule: typeof import("mermaid") | null = null;
 
-function ensureMermaidInit() {
-	if (mermaidInitialized) return;
-	mermaid.initialize({
-		startOnLoad: false,
-		theme: document.documentElement.getAttribute("data-theme") === "light" ? "default" : "dark",
-		securityLevel: "strict",
-	});
-	mermaidInitialized = true;
+async function getMermaid() {
+	if (!mermaidModule) {
+		mermaidModule = await import("mermaid");
+		mermaidModule.default.initialize({
+			startOnLoad: false,
+			theme: document.documentElement.getAttribute("data-theme") === "light" ? "default" : "dark",
+			securityLevel: "strict",
+		});
+	}
+	return mermaidModule.default;
 }
 
 export function MermaidBlock({ source }: { source: string }) {
@@ -22,10 +23,10 @@ export function MermaidBlock({ source }: { source: string }) {
 
 	useEffect(() => {
 		let cancelled = false;
-		ensureMermaidInit();
 
 		(async () => {
 			try {
+				const mermaid = await getMermaid();
 				const { svg: rendered } = await mermaid.render(`mermaid-${id}`, source.trim());
 				if (!cancelled) setSvg(rendered);
 			} catch (err) {
