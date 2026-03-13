@@ -1,4 +1,4 @@
-import { ArrowUp, Menu, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, Loader2, Menu, Mic, MicOff, Paperclip, Square, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ModelSelector } from "../components/ModelSelector";
 import { ChatContainerContent, ChatContainerRoot } from "../components/prompt-kit/chat-container";
@@ -14,6 +14,8 @@ import { ScrollButton } from "../components/prompt-kit/scroll-button";
 import { ThinkingPanel } from "../components/prompt-kit/thinking-panel";
 import { ToolCall } from "../components/prompt-kit/tool-call";
 import { Button } from "../components/ui/button";
+import { useVoiceInput } from "../hooks/use-voice-input";
+import { useI18n } from "../i18n";
 import {
 	type AgentEvent,
 	API_BASE,
@@ -74,6 +76,35 @@ export function Chat() {
 	const [showSidebar, setShowSidebar] = useState(false);
 	const [asideToast, setAsideToast] = useState<{ question: string; answer: string } | null>(null);
 	const asideTimerRef = useRef<ReturnType<typeof setTimeout>>();
+	const [sttAvailable, setSttAvailable] = useState(false);
+	const { t } = useI18n();
+	const { isRecording, isTranscribing, startRecording, stopRecording } = useVoiceInput();
+
+	useEffect(() => {
+		apiFetch(`${API_BASE}/api/system/status`)
+			.then((r) => r.json())
+			.then((data: { stt?: { available: boolean } }) => {
+				setSttAvailable(data.stt?.available ?? false);
+			})
+			.catch(() => {});
+	}, []);
+
+	const handleMicClick = useCallback(async () => {
+		if (isRecording) {
+			try {
+				const text = await stopRecording();
+				if (text) setInput((prev) => (prev ? `${prev} ${text}` : text));
+			} catch {
+				// STT failed silently — user already sees the button state reset
+			}
+		} else {
+			try {
+				await startRecording();
+			} catch {
+				// Microphone permission denied or not available
+			}
+		}
+	}, [isRecording, startRecording, stopRecording]);
 
 	useEffect(
 		() => () => {
@@ -828,6 +859,36 @@ export function Chat() {
 								>
 									<Paperclip className="h-4 w-4" />
 								</Button>
+								{sttAvailable && (
+									<Button
+										variant="ghost"
+										size="icon"
+										className={`h-8 w-8 rounded-full ${
+											isRecording
+												? "text-red-400 animate-pulse"
+												: isTranscribing
+													? "text-muted-foreground"
+													: "text-muted-foreground hover:text-foreground"
+										}`}
+										onClick={handleMicClick}
+										disabled={isTranscribing || isStreaming}
+										title={
+											isRecording
+												? t("chat.voice.stop")
+												: isTranscribing
+													? t("chat.voice.transcribing")
+													: t("chat.voice.start")
+										}
+									>
+										{isTranscribing ? (
+											<Loader2 className="h-4 w-4 animate-spin" />
+										) : isRecording ? (
+											<MicOff className="h-4 w-4" />
+										) : (
+											<Mic className="h-4 w-4" />
+										)}
+									</Button>
+								)}
 								{isStreaming && (
 									<Button
 										variant="ghost"

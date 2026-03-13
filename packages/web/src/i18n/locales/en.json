@@ -61,6 +61,13 @@
 			"subtitle": "Everything is ready — start using YanClaw"
 		}
 	},
+	"chat": {
+		"voice": {
+			"start": "Voice input",
+			"stop": "Stop recording",
+			"transcribing": "Transcribing..."
+		}
+	},
 	"providers": {
 		"anthropic": { "name": "Anthropic", "description": "Claude model family" },
 		"openai": { "name": "OpenAI", "description": "GPT / o model family" },

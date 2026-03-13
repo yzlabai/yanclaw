@@ -61,6 +61,13 @@
 			"subtitle": "一切就绪，开始使用 YanClaw"
 		}
 	},
+	"chat": {
+		"voice": {
+			"start": "语音输入",
+			"stop": "停止录音",
+			"transcribing": "转写中..."
+		}
+	},
 	"providers": {
 		"anthropic": { "name": "Anthropic", "description": "Claude 系列模型" },
 		"openai": { "name": "OpenAI", "description": "GPT / o 系列模型" },

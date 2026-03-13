@@ -59,6 +59,7 @@ export const systemRoute = new Hono()
 				entries: memoryEntries,
 			},
 			cron: { tasks: config.cron.tasks.length },
+			stt: { available: gw.sttService.isAvailable(config) },
 		});
 	})
 	.get("/setup", (c) => {

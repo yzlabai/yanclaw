@@ -32,6 +32,7 @@ export interface GatewayContext {
 	sessions: SessionStore;
 	memories: MemoryStore;
 	media: MediaStore;
+	sttService: SttService;
 	agentRuntime: AgentRuntime;
 	modelManager: ModelManager;
 	channelManager: ChannelManager;
@@ -128,6 +129,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		sessions: new SessionStore(),
 		memories: new MemoryStore(),
 		media: mediaStore,
+		sttService,
 		agentRuntime,
 		modelManager,
 		channelManager,

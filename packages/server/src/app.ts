@@ -18,6 +18,7 @@ import { modelsRoute } from "./routes/models";
 import { pluginsRoute } from "./routes/plugins";
 import { sessionsRoute } from "./routes/sessions";
 import { skillsRoute } from "./routes/skills";
+import { sttRoute } from "./routes/stt";
 import { systemRoute } from "./routes/system";
 import { usageRoute } from "./routes/usage";
 import { wsRoute } from "./routes/ws";
@@ -57,6 +58,7 @@ const apiRoutes = app
 	.route("/models", modelsRoute)
 	.route("/plugins", pluginsRoute)
 	.route("/skills", skillsRoute)
+	.route("/stt", sttRoute)
 	.route("/system", systemRoute)
 	.route("/audit", auditRoute)
 	.route("/usage", usageRoute)
