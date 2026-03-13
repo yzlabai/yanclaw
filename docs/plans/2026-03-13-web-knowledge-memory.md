@@ -387,9 +387,9 @@ gantt
 | **2** | ✅ 完成 | 后端 6 个新/增强端点 + Knowledge 页面（搜索/过滤/CRUD/统计/批量操作） |
 | **3** | ✅ 完成 | 后端 recall 事件 + 前端 RecallPanel 组件 + 深链跳转 Knowledge 详情 |
 | **4** | ✅ 完成 | 3 provider（Tavily→Brave→DuckDuckGo）fallback + 内置 web-knowledge 自动入库插件 |
-| **5** | ✅ 完成 | 主动记忆 prompt 注入 + scope 字段 + 共享知识可见/可搜索 |
+| **5** | ✅ 完成 | 主动记忆 prompt 注入 + scope 字段 + 共享知识可见/可搜索 + agent sharedAccess 配置接入 |
 | **6** | 🔜 待定 | Tauri WebView 认证浏览，独立 session 实现 |
-| **7** | 🔜 待定 | 文档批量导入（.md/.txt/.pdf/.json/.csv），独立 session 实现 |
+| **7** | ✅ 完成 | 文档批量导入（.md/.txt/.json/.csv）+ Knowledge 页面导入 UI + 拖拽上传 |
 
 ### 实际文件变更清单
 
@@ -405,9 +405,10 @@ gantt
 - `packages/server/src/plugins/builtin/web-knowledge.ts` — 自动入库插件
 - `packages/web/src/pages/Knowledge.tsx` — 知识库管理页面
 - `packages/web/src/components/prompt-kit/recall-panel.tsx` — 召回引用面板
+- `packages/server/src/memory/chunker.ts` — 文档分块器（Markdown/Text/JSON/CSV）
 
 **修改文件：**
-- `packages/server/src/routes/memory.ts` — 新增 stats/tags/batch/GET/:id 端点，增强 list/search
+- `packages/server/src/routes/memory.ts` — 新增 stats/tags/batch/GET/:id/import 端点，增强 list/search
 - `packages/server/src/db/schema.ts` — memories 表新增 scope 列
 - `packages/server/src/db/sqlite.ts` — 迁移 v7
 - `packages/server/src/db/memories.ts` — scope/includeShared 支持
@@ -423,10 +424,9 @@ gantt
 
 ### 已知待改进项（不阻塞发布）
 
-- 配置 schema 未新增 `tools.web.fetch.readability`、`tools.web.cache.*`、`tools.web.search.providers` — 工具使用合理默认值运行
-- Agent 级别 `memory.sharedAccess` 配置未接入 — DB/MemoryStore 层已支持，工具层尚未根据 agent config 自动传入
 - web-knowledge 插件硬编码 `agentId: "main"` — afterToolCall hook 无 agent 上下文，已改为 `scope: "shared"` 缓解
-- 缓存无主动清理 — 仅 lazy eviction + LRU 淘汰，长期运行无影响
+- PDF 导入暂未支持 — 需额外依赖，可后续通过 media.extractPdfText + chunker 实现
+- 导入大文件时无进度反馈 — 当前同步处理，未来可改为异步 job + SSE 推送进度
 
 ## 各阶段验收标准
 
