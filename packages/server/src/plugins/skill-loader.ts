@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { version as yanclawVersion } from "../../../package.json";
+import { version as yanclawVersion } from "../../../../package.json";
 import { detectInjection } from "../security/sanitize";
 import type { PluginDefinition } from "./types";
 

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { nanoid } from "nanoid";
 import type { AgentEvent } from "../runtime";
 import type { AgentAdapter } from "./adapter";
@@ -85,7 +85,11 @@ export class AgentSupervisor {
 
 		// Resolve working directory
 		const baseDir = (agentConfig.workspaceDir as string) ?? process.cwd();
-		let workDir = config.workDir ? join(baseDir, config.workDir) : baseDir;
+		let workDir = config.workDir
+			? isAbsolute(config.workDir)
+				? config.workDir
+				: join(baseDir, config.workDir)
+			: baseDir;
 
 		// Create git worktree if requested
 		let worktreePath: string | undefined;

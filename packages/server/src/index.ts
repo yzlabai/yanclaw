@@ -27,7 +27,7 @@ async function main() {
 	const gw = initGateway(configStore);
 
 	// 4. Start HTTP server
-	const port = config.gateway.port;
+	const port = process.env.PORT ? Number(process.env.PORT) : config.gateway.port;
 	const hostname = config.gateway.bind === "lan" ? "0.0.0.0" : "127.0.0.1";
 
 	const server = Bun.serve({

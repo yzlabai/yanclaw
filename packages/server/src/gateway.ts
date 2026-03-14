@@ -90,6 +90,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		pluginRegistry,
 	);
 	const executionStore = new ExecutionStore();
+	const sessions = new SessionStore();
 	const channelManager = new ChannelManager();
 	channelManager.sessions = sessions;
 	channelManager.executions = executionStore;
@@ -169,7 +170,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 
 	ctx = {
 		config,
-		sessions: new SessionStore(),
+		sessions,
 		executions: executionStore,
 		memories: new MemoryStore(),
 		media: mediaStore,
