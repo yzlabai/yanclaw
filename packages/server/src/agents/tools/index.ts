@@ -218,9 +218,12 @@ export async function createToolset(opts: {
 			maxOutput,
 			search: toolsConfig.web?.search,
 		}),
-		browser_navigate: createBrowserNavigateTool({ maxOutput }),
-		browser_screenshot: createBrowserScreenshotTool(),
-		browser_action: createBrowserActionTool(),
+		browser_navigate: createBrowserNavigateTool({
+			maxOutput,
+			cdpUrl: toolsConfig.browser?.cdpUrl,
+		}),
+		browser_screenshot: createBrowserScreenshotTool({ cdpUrl: toolsConfig.browser?.cdpUrl }),
+		browser_action: createBrowserActionTool({ cdpUrl: toolsConfig.browser?.cdpUrl }),
 		screenshot_desktop: createDesktopScreenshotTool(),
 	};
 

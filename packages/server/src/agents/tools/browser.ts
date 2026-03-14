@@ -2,21 +2,59 @@ import { tool } from "ai";
 import { z } from "zod";
 import { truncateOutput } from "./common";
 
+export interface BrowserOpts {
+	maxOutput: number;
+	/** CDP endpoint URL (e.g. "http://127.0.0.1:9222"). Connects to user's running browser with auth sessions. */
+	cdpUrl?: string;
+}
+
 let browserInstance: import("playwright").Browser | null = null;
 let pageInstance: import("playwright").Page | null = null;
+let currentCdpUrl: string | undefined;
 
-async function ensureBrowser() {
-	if (!browserInstance || !browserInstance.isConnected()) {
-		const { chromium } = await import("playwright");
-		browserInstance = await chromium.launch({ headless: true });
+async function ensureBrowser(cdpUrl?: string) {
+	// Reconnect if CDP URL changed or browser disconnected
+	if (browserInstance && (!browserInstance.isConnected() || currentCdpUrl !== cdpUrl)) {
+		await closeBrowser();
 	}
+
+	if (!browserInstance) {
+		const { chromium } = await import("playwright");
+
+		if (cdpUrl) {
+			// Connect to user's running browser via CDP — inherits all login sessions
+			try {
+				browserInstance = await chromium.connectOverCDP(cdpUrl);
+			} catch (err) {
+				throw new Error(
+					`Failed to connect to Chrome CDP at ${cdpUrl}. ` +
+						`Ensure Chrome is running with --remote-debugging-port. ` +
+						`Original error: ${err instanceof Error ? err.message : err}`,
+				);
+			}
+			currentCdpUrl = cdpUrl;
+		} else {
+			browserInstance = await chromium.launch({ headless: true });
+			currentCdpUrl = undefined;
+		}
+	}
+
 	if (!pageInstance || pageInstance.isClosed()) {
-		const context = await browserInstance.newContext({
-			viewport: { width: 1280, height: 720 },
-			userAgent:
-				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		});
-		pageInstance = await context.newPage();
+		if (cdpUrl) {
+			// CDP mode: use the browser's default context (has user's cookies)
+			const contexts = browserInstance.contexts();
+			const ctx = contexts[0] ?? (await browserInstance.newContext());
+			// Create a new tab in the user's browser
+			pageInstance = await ctx.newPage();
+		} else {
+			// Headless mode: create isolated context
+			const context = await browserInstance.newContext({
+				viewport: { width: 1280, height: 720 },
+				userAgent:
+					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+			});
+			pageInstance = await context.newPage();
+		}
 	}
 	return pageInstance;
 }
@@ -26,17 +64,22 @@ export async function closeBrowser(): Promise<void> {
 	if (pageInstance && !pageInstance.isClosed()) {
 		await pageInstance.close().catch(() => {});
 	}
+	// CDP mode: close() disconnects without killing user's browser
+	// Headless mode: close() terminates the browser process we launched
 	if (browserInstance?.isConnected()) {
 		await browserInstance.close().catch(() => {});
 	}
 	browserInstance = null;
 	pageInstance = null;
+	currentCdpUrl = undefined;
 }
 
-export function createBrowserNavigateTool(opts: { maxOutput: number }) {
+export function createBrowserNavigateTool(opts: BrowserOpts) {
+	const cdpHint = opts.cdpUrl
+		? " Connected to user's browser with existing login sessions — can access authenticated pages."
+		: "";
 	return tool({
-		description:
-			"Navigate the browser to a URL and extract the visible text content. Use this for reading JavaScript-rendered web pages that web_fetch cannot handle.",
+		description: `Navigate the browser to a URL and extract the visible text content. Use this for reading JavaScript-rendered web pages that web_fetch cannot handle.${cdpHint}`,
 		parameters: z.object({
 			url: z.string().describe("The URL to navigate to"),
 			waitFor: z
@@ -47,7 +90,7 @@ export function createBrowserNavigateTool(opts: { maxOutput: number }) {
 		}),
 		execute: async ({ url, waitFor }) => {
 			try {
-				const page = await ensureBrowser();
+				const page = await ensureBrowser(opts.cdpUrl);
 				await page.goto(url, {
 					waitUntil: waitFor,
 					timeout: 30_000,
@@ -73,7 +116,7 @@ export function createBrowserNavigateTool(opts: { maxOutput: number }) {
 	});
 }
 
-export function createBrowserScreenshotTool() {
+export function createBrowserScreenshotTool(opts?: Pick<BrowserOpts, "cdpUrl">) {
 	return tool({
 		description:
 			"Take a screenshot of the current browser page. Returns the screenshot as a base64 data URL. Use browser_navigate first to open a page.",
@@ -87,7 +130,7 @@ export function createBrowserScreenshotTool() {
 		}),
 		execute: async ({ fullPage, selector }) => {
 			try {
-				const page = await ensureBrowser();
+				const page = await ensureBrowser(opts?.cdpUrl);
 
 				let buffer: Buffer;
 				if (selector) {
@@ -110,7 +153,7 @@ export function createBrowserScreenshotTool() {
 	});
 }
 
-export function createBrowserActionTool() {
+export function createBrowserActionTool(opts?: Pick<BrowserOpts, "cdpUrl">) {
 	return tool({
 		description:
 			"Perform an action on the current browser page: click, type text, press keys, or scroll. Use browser_navigate first.",
@@ -130,7 +173,7 @@ export function createBrowserActionTool() {
 		}),
 		execute: async ({ action, selector, text, direction, amount }) => {
 			try {
-				const page = await ensureBrowser();
+				const page = await ensureBrowser(opts?.cdpUrl);
 
 				switch (action) {
 					case "click": {

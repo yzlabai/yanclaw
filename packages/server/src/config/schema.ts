@@ -222,6 +222,13 @@ const toolsSchema = z
 				maxOutputChars: z.number().default(50_000),
 			})
 			.default({}),
+		browser: z
+			.object({
+				/** Chrome DevTools Protocol endpoint (e.g. "http://127.0.0.1:9222").
+				 *  When set, browser tools connect to the user's running Chrome with existing login sessions. */
+				cdpUrl: z.string().url().optional(),
+			})
+			.optional(),
 		web: z
 			.object({
 				search: z
