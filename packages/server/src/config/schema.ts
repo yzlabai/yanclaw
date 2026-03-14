@@ -99,7 +99,7 @@ const agentSchema = z.object({
 			suppressOk: z.boolean().default(true),
 		})
 		.default({}),
-	runtime: z.enum(["default", "claude-code"]).default("default"),
+	runtime: z.enum(["default", "claude-code", "codex", "gemini"]).default("default"),
 	memory: z
 		.object({
 			sharedAccess: z.boolean().default(false),
@@ -122,6 +122,19 @@ const agentSchema = z.object({
 					}),
 				)
 				.default({}),
+		})
+		.optional(),
+	codex: z
+		.object({
+			mode: z.enum(["interactive", "full-auto"]).default("full-auto"),
+			model: z.string().optional(),
+		})
+		.optional(),
+	gemini: z
+		.object({
+			model: z.string().optional(),
+			permissionMode: z.enum(["default", "yolo", "safe-yolo"]).default("default"),
+			sandbox: z.boolean().default(false),
 		})
 		.optional(),
 });
@@ -397,6 +410,22 @@ export const configSchema = z.object({
 					}),
 				)
 				.default({}),
+		})
+		.default({}),
+
+	agentHub: z
+		.object({
+			enabled: z.boolean().default(false),
+			/** Channel to send agent event notifications (e.g. "telegram:owner"). */
+			notifyChannel: z.string().optional(),
+			/** Which event types trigger notifications. */
+			notifyEvents: z
+				.array(z.enum(["permission-request", "done", "error", "status-change"]))
+				.default(["done", "error"]),
+			/** Max concurrent agent processes. */
+			maxConcurrentAgents: z.number().default(5),
+			/** Auto-deny timeout for permission requests, in seconds. */
+			approvalTimeout: z.number().default(1800),
 		})
 		.default({}),
 

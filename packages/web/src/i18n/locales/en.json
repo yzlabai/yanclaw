@@ -13,6 +13,7 @@
 	},
 	"nav": {
 		"chat": "Chat",
+		"agentHub": "Agent Hub",
 		"sessions": "Sessions",
 		"agents": "Agents",
 		"channels": "Channels",

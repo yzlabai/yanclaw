@@ -1,5 +1,10 @@
 import { ModelManager } from "./agents/model-manager";
 import { AgentRuntime } from "./agents/runtime";
+import { AgentSupervisor } from "./agents/supervisor";
+import { createClaudeCodeAdapter } from "./agents/supervisor/adapters/claude-code";
+import { createCodexAdapter } from "./agents/supervisor/adapters/codex";
+import { createGeminiAdapter } from "./agents/supervisor/adapters/gemini";
+import { AgentHubNotifier } from "./agents/supervisor/notifier";
 import { UsageTracker } from "./agents/usage-tracker";
 import { ApprovalManager } from "./approvals";
 import { ChannelManager } from "./channels/manager";
@@ -47,6 +52,7 @@ export interface GatewayContext {
 	tokenRotation: TokenRotation | null;
 	usageTracker: UsageTracker;
 	heartbeatRunner: HeartbeatRunner;
+	supervisor: AgentSupervisor;
 }
 
 let ctx: GatewayContext | null = null;
@@ -101,6 +107,37 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		});
 	}
 
+	// Initialize agent supervisor for multi-agent hub
+	const hubCfg = config.get().agentHub;
+	const supervisor = new AgentSupervisor({
+		approvalTimeoutMs: hubCfg.approvalTimeout * 1000,
+		maxConcurrent: hubCfg.maxConcurrentAgents,
+	});
+	supervisor.registerAdapterFactory("claude-code", createClaudeCodeAdapter);
+	supervisor.registerAdapterFactory("codex", createCodexAdapter);
+	supervisor.registerAdapterFactory("gemini", createGeminiAdapter);
+	supervisor.setAgentConfigResolver((agentId) => {
+		const agent = config.get().agents.find((a) => a.id === agentId);
+		return agent ? (agent as unknown as Record<string, unknown>) : undefined;
+	});
+
+	// Initialize agent hub notifier if configured
+	if (hubCfg.notifyChannel) {
+		const notifier = new AgentHubNotifier(channelManager, {
+			notifyChannel: hubCfg.notifyChannel,
+			notifyEvents: hubCfg.notifyEvents,
+		});
+		notifier.attach(supervisor);
+
+		// Hot-reload notifier config
+		config.onChange((newCfg) => {
+			notifier.updateConfig({
+				notifyChannel: newCfg.agentHub.notifyChannel,
+				notifyEvents: newCfg.agentHub.notifyEvents,
+			});
+		});
+	}
+
 	// Register API keys for leak detection
 	leakDetector.registerFromConfig(config.get());
 	config.onChange((cfg) => {
@@ -144,6 +181,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		tokenRotation,
 		usageTracker,
 		heartbeatRunner,
+		supervisor,
 	};
 
 	return ctx;

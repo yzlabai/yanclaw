@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { authMiddleware } from "./middleware/auth";
 import { rateLimiter } from "./middleware/rate-limit";
+import { agentHubRoute } from "./routes/agent-hub";
 import { agentsRoute } from "./routes/agents";
 import { approvalsRoute } from "./routes/approvals";
 import { auditRoute } from "./routes/audit";
@@ -45,6 +46,7 @@ const app = new Hono()
 const apiRoutes = app
 	.basePath("/api")
 	.route("/chat", chatRoute)
+	.route("/agent-hub", agentHubRoute)
 	.route("/agents", agentsRoute)
 	.route("/approvals", approvalsRoute)
 	.route("/channels", channelsRoute)

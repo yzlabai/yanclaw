@@ -13,6 +13,7 @@
 	},
 	"nav": {
 		"chat": "聊天",
+		"agentHub": "Agent Hub",
 		"sessions": "会话",
 		"agents": "Agent",
 		"channels": "频道",

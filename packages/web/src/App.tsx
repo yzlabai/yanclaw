@@ -3,6 +3,7 @@ import {
 	Bot,
 	Clock,
 	History,
+	LayoutDashboard,
 	Menu,
 	MessageSquare,
 	PanelLeftClose,
@@ -31,6 +32,7 @@ import { I18nProvider, useI18n } from "./i18n";
 import { API_BASE } from "./lib/api";
 import { ONBOARDING_DONE_KEY } from "./lib/constants";
 import { isTauri, startGateway } from "./lib/tauri";
+import { AgentHub } from "./pages/AgentHub";
 import { Agents } from "./pages/Agents";
 import { Channels } from "./pages/Channels";
 import { Chat } from "./pages/Chat";
@@ -86,6 +88,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 
 const NAV_ITEMS = [
 	{ to: "/", labelKey: "nav.chat", icon: MessageSquare },
+	{ to: "/agent-hub", labelKey: "nav.agentHub", icon: LayoutDashboard },
 	{ to: "/sessions", labelKey: "nav.sessions", icon: History },
 	{ to: "/agents", labelKey: "nav.agents", icon: Bot },
 	{ to: "/channels", labelKey: "nav.channels", icon: Radio },
@@ -263,6 +266,7 @@ function AppLayout() {
 					<Routes>
 						<Route path="/" element={<Chat />} />
 						<Route path="/channels" element={<Channels />} />
+						<Route path="/agent-hub" element={<AgentHub />} />
 						<Route path="/sessions" element={<Sessions />} />
 						<Route path="/mcp" element={<McpServers />} />
 						<Route path="/cron" element={<Cron />} />
