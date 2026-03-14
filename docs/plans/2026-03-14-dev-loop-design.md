@@ -2,6 +2,42 @@
 
 > YanClaw 调用 Claude Code 自动开发项目，24小时监控进展，测试反馈迭代。
 
+## 需求本质
+
+**用程序替代人类坐在 Claude Code 前面的角色。**
+
+人类使用 Claude Code 的完整循环：给任务 → 看它写 → 遇到权限请求点批准 → 写完了跑测试 → 测试挂了把错误贴回去说"修" → 循环 → 最终 PR。
+
+Dev Loop 模拟的就是这个最机械的部分：
+
+| 人类动作 | 程序替代 |
+|---------|---------|
+| 看着输出等完成 | 监听 `status-change` 事件 |
+| 遇到弹窗点允许 | ConfirmPolicy 规则引擎 |
+| 跑 `bun test` | TestRunner |
+| 看报错，复制粘贴给 Claude | feedbackPrompt 模板 |
+| 判断"这修不好了，换个思路" | 死循环检测 |
+| 判断"行了，够了" | 迭代上限 |
+| 最后 `git push` 开 PR | Deliverer |
+
+**真正新增的能力很小**：TestRunner（执行验证命令）、反馈循环（测试错误发回 Claude Code）、终止判断（什么时候停）。其他一切——进程管理、权限审批、worktree、通知推送、DAG——都已存在于 AgentSupervisor 中。
+
+核心逻辑本质上是一个 while 循环：
+
+```typescript
+while (iteration < max && !deadLoop) {
+  claudeCode.send(prompt);
+  await claudeCode.done();
+  result = runTests();
+  if (result.passed) break;
+  prompt = formatFeedback(result);
+  iteration++;
+}
+createPR();
+```
+
+下面的设计围绕这个核心循环展开，增加的是：可配置的确认断点、通知推送、DAG 编排、错误恢复等生产级包装。
+
 ## 概述
 
 在现有 Agent Hub（AgentSupervisor）之上新增 **DevLoopController** 编排层，实现：
