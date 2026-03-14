@@ -4,11 +4,9 @@
 
 ## 需求本质
 
-**用程序替代人类坐在 Claude Code 前面的角色。**
+### 第一层：替代人类坐在 AI 工具前面
 
-人类使用 Claude Code 的完整循环：给任务 → 看它写 → 遇到权限请求点批准 → 写完了跑测试 → 测试挂了把错误贴回去说"修" → 循环 → 最终 PR。
-
-Dev Loop 模拟的就是这个最机械的部分：
+人类使用 Claude Code 的完整循环：给任务 → 看它写 → 遇到权限请求点批准 → 写完了跑测试 → 测试挂了把错误贴回去说"修" → 循环 → 最终 PR。Dev Loop 模拟的就是这个最机械的部分：
 
 | 人类动作 | 程序替代 |
 |---------|---------|
@@ -20,23 +18,59 @@ Dev Loop 模拟的就是这个最机械的部分：
 | 判断"行了，够了" | 迭代上限 |
 | 最后 `git push` 开 PR | Deliverer |
 
-**真正新增的能力很小**：TestRunner（执行验证命令）、反馈循环（测试错误发回 Claude Code）、终止判断（什么时候停）。其他一切——进程管理、权限审批、worktree、通知推送、DAG——都已存在于 AgentSupervisor 中。
-
 核心逻辑本质上是一个 while 循环：
 
 ```typescript
 while (iteration < max && !deadLoop) {
-  claudeCode.send(prompt);
-  await claudeCode.done();
-  result = runTests();
+  agent.send(prompt);
+  await agent.done();
+  result = verify();
   if (result.passed) break;
   prompt = formatFeedback(result);
   iteration++;
 }
-createPR();
+deliver();
 ```
 
-下面的设计围绕这个核心循环展开，增加的是：可配置的确认断点、通知推送、DAG 编排、错误恢复等生产级包装。
+### 第二层：YanClaw 是个人 AI 协调器
+
+Claude Code 只是 YanClaw 能调度的智能体之一。更本质地看，YanClaw 的定位是**个人 AI 助理的中枢神经**——它不直接干活，而是协调不同的 AI 工具去干活，监控它们，处理它们的反馈，判断结果，决定下一步。
+
+```
+                        YanClaw（协调器）
+                       /       |        \
+              Claude Code    Codex     Gemini     ...更多智能体
+              (写代码)      (写代码)   (写代码)
+                  |            |          |
+              测试验证      测试验证    测试验证     ...更多验证方式
+```
+
+这个模式可以泛化到编码之外：
+
+| 场景 | 智能体 | 验证方式 | 交付物 |
+|------|-------|---------|-------|
+| 写代码 | Claude Code / Codex / Gemini | 跑测试 | PR |
+| 写文档 | Claude API | 检查格式/链接/拼写 | commit |
+| 数据分析 | Code Interpreter | 检查输出完整性 | 报告文件 |
+| 图片生成 | DALL-E / Midjourney | 人工确认 | 媒体文件 |
+| 研究调研 | Perplexity / Web Search Agent | 检查引用有效性 | 文档 |
+
+**所以 Dev Loop 的设计应该是可泛化的**：核心循环（派发 → 监控 → 验证 → 反馈 → 迭代）是通用的，Claude Code + 测试 + PR 只是第一个实例。设计时把"写代码"相关的逻辑（TestRunner、git 交付）做成可插拔的策略，未来替换成其他验证/交付方式就能支持新场景。
+
+```typescript
+interface TaskLoop<TResult> {
+  agent: AgentAdapter;              // 谁来干活（Claude Code, Codex, ...）
+  verifier: Verifier<TResult>;     // 怎么验证（跑测试, 检查格式, 人工确认, ...）
+  deliverer: Deliverer<TResult>;   // 怎么交付（PR, commit, 上传文件, ...）
+  feedbackFormatter: (result: TResult) => string;  // 怎么反馈
+  terminationPolicy: TerminationPolicy;            // 什么时候停
+  confirmPolicy: ConfirmPolicy;                    // 什么时候问人
+}
+```
+
+本次实现聚焦 **Dev Loop**（编码场景），但模块边界按上述泛化接口设计，为未来扩展留好口子。
+
+下面的设计围绕编码场景的核心循环展开，增加的是：可配置的确认断点、通知推送、DAG 编排、错误恢复等生产级包装。
 
 ## 概述
 
