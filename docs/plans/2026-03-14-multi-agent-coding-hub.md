@@ -815,4 +815,4 @@ spawn 时 worktree=true:
 >
 > **合理偏差**：`claude-code-watcher.ts`（Wrapper 模式）、WebSocket 双向通信、`PermissionCard` / `FileChangeCard` 组件未实现，SSE + REST 替代了 WebSocket 方案。
 >
-> **已知待修复**：`execSync` → `execFileSync`、SSE headers 设置时机、token usage 零值、内存清理策略等。见 devlog 详细列表。
+> **迭代修复 (2026-03-14)**：7/9 issue 已修复（execFileSync 安全加固、SSE headers、内存清理、审批 timer 泄漏、大小写风险分类、elapsed 自动刷新、TS 类型修复）。仅 Codex/Gemini token usage 零值待对接真实 runtime 后修复。

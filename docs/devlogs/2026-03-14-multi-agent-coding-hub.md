@@ -115,17 +115,19 @@
 
 ## Code Review 发现
 
-### 已知问题（后续迭代修复）
+### 已知问题
 
-| # | 级别 | 问题 | 建议 |
+| # | 级别 | 问题 | 状态 |
 |---|------|------|------|
-| 1 | 中 | `execSync` git 命令建议改用 `execFileSync` 避免 shell 注入风险 | 参数数组化 |
-| 2 | 中 | SSE headers 在 `stream()` 回调内设置可能无效 | 移到 `stream()` 调用前 |
-| 3 | 低 | Codex/Gemini adapter token usage 始终为 0 | 解析各自协议中的 usage 字段 |
-| 4 | 低 | 已停止进程永不从内存 Map 移除 | 添加过期清理策略 |
-| 5 | 低 | 审批超时 setTimeout 无法取消 | 存储 timer ref，resolve 时 clearTimeout |
-| 6 | 低 | 风险分类 `classifyRisk` 不区分大小写 | `tool.toLowerCase()` |
-| 7 | 低 | ProcessDetail/ProcessCard 的 elapsed time 不自动刷新 | 添加 useInterval |
+| 1 | 中 | `execSync` → `execFileSync` 避免 shell 注入 | ✅ 已修复 — 5 处改为 array args |
+| 2 | 中 | SSE headers 在 `stream()` 回调内设置 | ✅ 已修复 — 移到 `stream()` 前 |
+| 3 | 低 | Codex/Gemini adapter token usage 始终为 0 | ⏳ 待修复 — 需对接真实 runtime 测试 |
+| 4 | 低 | 已停止进程永不从内存 Map 移除 | ✅ 已修复 — 30min TTL 自动清理 |
+| 5 | 低 | 审批超时 setTimeout 无法取消 | ✅ 已修复 — `approvalTimers` Map + clearTimeout |
+| 6 | 低 | 风险分类 `classifyRisk` 不区分大小写 | ✅ 已修复 — `toolLower` |
+| 7 | 低 | ProcessDetail/ProcessCard elapsed time 不自动刷新 | ✅ 已修复 — useEffect + setInterval(1s) |
+| 8 | 低 | Codex/Gemini `tool_result` 缺少 `duration` 字段 | ✅ 已修复 — 补充默认值 0 |
+| 9 | 低 | Codex adapter 缺少 `ChildProcess` 类型导入 | ✅ 已修复 |
 
 ### 计划偏差（合理简化）
 
