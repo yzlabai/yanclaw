@@ -254,6 +254,10 @@ export class TelegramAdapter implements ChannelAdapter {
 		}
 	}
 
+	async sendTyping(peer: Peer): Promise<void> {
+		await this.bot.api.sendChatAction(Number(peer.id), "typing");
+	}
+
 	onMessage(handler: InboundHandler): Unsubscribe {
 		this.handlers.add(handler);
 		return () => {

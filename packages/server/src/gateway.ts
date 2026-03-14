@@ -17,6 +17,7 @@ import "./channels/telegram";
 import type { ConfigStore } from "./config";
 import { CronService } from "./cron";
 import { HeartbeatRunner } from "./cron/heartbeat";
+import { ExecutionStore } from "./db/executions";
 import { MemoryStore } from "./db/memories";
 import { SessionStore } from "./db/sessions";
 import { getRawDatabase } from "./db/sqlite";
@@ -36,6 +37,7 @@ import { TokenRotation } from "./security/token-rotation";
 export interface GatewayContext {
 	config: ConfigStore;
 	sessions: SessionStore;
+	executions: ExecutionStore;
 	memories: MemoryStore;
 	media: MediaStore;
 	sttService: SttService;
@@ -87,7 +89,10 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		usageTracker,
 		pluginRegistry,
 	);
+	const executionStore = new ExecutionStore();
 	const channelManager = new ChannelManager();
+	channelManager.sessions = sessions;
+	channelManager.executions = executionStore;
 	channelManager.sttService = sttService;
 	channelManager.pluginRegistry = pluginRegistry;
 	const cronService = new CronService();
@@ -165,6 +170,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 	ctx = {
 		config,
 		sessions: new SessionStore(),
+		executions: executionStore,
 		memories: new MemoryStore(),
 		media: mediaStore,
 		sttService,
@@ -328,6 +334,16 @@ export function runSessionCleanup(gw: GatewayContext): void {
 	if (usagePruned > 0) {
 		console.log(`[gateway] Pruned ${usagePruned} usage records`);
 	}
+
+	// Mark any "running" executions as interrupted (server was restarted)
+	const interrupted = gw.executions.markRunningAsInterrupted();
+	if (interrupted > 0) {
+		console.log(
+			`[gateway] Marked ${interrupted} interrupted execution(s) — use /resume to recover`,
+		);
+	}
+	// Prune old completed executions
+	gw.executions.pruneCompleted(days);
 
 	// Session auto-reset
 	const autoReset = cfg.session.autoReset;

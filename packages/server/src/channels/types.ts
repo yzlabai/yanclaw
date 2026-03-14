@@ -77,4 +77,6 @@ export interface ChannelAdapter {
 	disconnect(): Promise<void>;
 	send(peer: Peer, content: OutboundMessage): Promise<string | null>;
 	onMessage(handler: InboundHandler): Unsubscribe;
+	/** Send typing indicator. Optional — not all platforms support it. */
+	sendTyping?(peer: Peer): Promise<void>;
 }

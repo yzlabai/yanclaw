@@ -1,9 +1,12 @@
 import type { Config, Preference } from "../config/schema";
+import type { ExecutionStore } from "../db/executions";
+import type { SessionStore } from "../db/sessions";
 import type { SttService } from "../media/stt";
 import type { PluginRegistry } from "../plugins/registry";
 import { resolveIdentity, resolveRoute } from "../routing/resolve";
 import { checkDmPolicy, isOwnerSender } from "./dm-policy";
 import { CHANNEL_DOCK } from "./dock";
+import { executeSlashCommand, parseSlashCommand } from "./slash-commands";
 import type { ChannelAdapter, ChannelStatus, InboundMessage } from "./types";
 
 export interface ChannelInfo {
@@ -18,6 +21,8 @@ export class ChannelManager {
 	private adapters = new Map<string, ChannelAdapter>();
 	private healthTimer: ReturnType<typeof setInterval> | null = null;
 	private reconnectAttempts = new Map<string, number>();
+	sessions?: SessionStore;
+	executions?: ExecutionStore;
 	sttService?: SttService;
 	pluginRegistry?: PluginRegistry;
 	onAgentActivity?: (agentId: string, channelId: string) => void;
@@ -193,7 +198,38 @@ export class ChannelManager {
 			}
 		}
 
-		// 0.5. Plugin onMessageInbound hooks
+		// 0.5. Slash commands (processed before agent, zero token cost)
+		const parsed = parseSlashCommand(msg.text);
+		if (parsed && this.sessions) {
+			const resolvedPeerIdForCmd = resolveIdentity(config, msg.channel, msg.senderId);
+			const routeForCmd = resolveRoute(config, {
+				channel: msg.channel,
+				accountId: msg.accountId,
+				peerId: resolvedPeerIdForCmd,
+				peerName: msg.senderName,
+				guildId: msg.peer.guildId,
+				groupId: msg.peer.kind === "group" ? msg.peer.id : undefined,
+				threadId: msg.peer.threadId ?? msg.threadId,
+				roles: msg.memberRoleIds,
+			});
+			const cmdCtx = {
+				config,
+				sessions: this.sessions,
+				executions: this.executions,
+				sessionKey: routeForCmd.sessionKey,
+				isOwner: isOwnerSender(msg, config),
+			};
+			const result = await executeSlashCommand(parsed.name, parsed.args, cmdCtx);
+			if (result.handled) {
+				const adapter = this.findAdapter(msg.channel, msg.accountId);
+				if (adapter) {
+					await adapter.send(msg.peer, { text: result.reply, format: "plain" });
+				}
+				return;
+			}
+		}
+
+		// 0.7. Plugin onMessageInbound hooks
 		if (this.pluginRegistry) {
 			const filtered = await this.pluginRegistry.runMessageInbound(msg);
 			if (filtered === null) {
@@ -267,6 +303,18 @@ export class ChannelManager {
 			}
 		}
 
+		// 3.5. Start typing indicator (DMs always, groups only when @mentioned)
+		const adapter = this.findAdapter(msg.channel, msg.accountId);
+		const shouldType = msg.peer.kind === "direct" || msg.peer.kind === "thread";
+		let typingTimer: ReturnType<typeof setInterval> | null = null;
+
+		if (shouldType && adapter?.sendTyping) {
+			adapter.sendTyping(msg.peer).catch(() => {});
+			typingTimer = setInterval(() => {
+				adapter.sendTyping?.(msg.peer).catch(() => {});
+			}, 5000);
+		}
+
 		try {
 			const events = this.agentRunner({
 				agentId: route.agentId,
@@ -293,7 +341,6 @@ export class ChannelManager {
 
 			// Send reply in chunks
 			if (buffer.trim()) {
-				const adapter = this.findAdapter(msg.channel, msg.accountId);
 				if (adapter) {
 					const chunks = chunkText(buffer, caps.maxTextLength);
 					for (const chunk of chunks) {
@@ -308,6 +355,8 @@ export class ChannelManager {
 			}
 		} catch (err) {
 			console.error("[channel] Agent execution error:", err);
+		} finally {
+			if (typingTimer) clearInterval(typingTimer);
 		}
 	}
 

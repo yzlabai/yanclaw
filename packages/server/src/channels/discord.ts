@@ -189,6 +189,17 @@ export class DiscordAdapter implements ChannelAdapter {
 		}
 	}
 
+	async sendTyping(peer: Peer): Promise<void> {
+		try {
+			const channel = await this.client.channels.fetch(peer.id);
+			if (channel?.isTextBased() && "sendTyping" in channel) {
+				await (channel as { sendTyping(): Promise<void> }).sendTyping();
+			}
+		} catch {
+			// Ignore typing errors — non-critical
+		}
+	}
+
 	onMessage(handler: InboundHandler): Unsubscribe {
 		this.handlers.add(handler);
 		return () => {

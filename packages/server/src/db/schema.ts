@@ -119,6 +119,25 @@ export const usage = sqliteTable(
 	],
 );
 
+export const agentExecutions = sqliteTable(
+	"agent_executions",
+	{
+		id: text("id").primaryKey(),
+		sessionKey: text("session_key").notNull(),
+		agentId: text("agent_id").notNull(),
+		status: text("status").notNull(), // "running" | "interrupted" | "completed"
+		userMessage: text("user_message").notNull(),
+		completedSteps: text("completed_steps"), // JSON array of completed tool call names
+		partialResponse: text("partial_response"),
+		startedAt: integer("started_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [
+		index("idx_executions_session").on(table.sessionKey),
+		index("idx_executions_status").on(table.status),
+	],
+);
+
 export const memories = sqliteTable(
 	"memories",
 	{

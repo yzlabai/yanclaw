@@ -9,6 +9,7 @@ import {
 	type ProviderType,
 } from "../config/schema";
 import { resolveDataDir } from "../config/store";
+import { ExecutionStore } from "../db/executions";
 import { MemoryStore } from "../db/memories";
 import { SessionStore } from "../db/sessions";
 import type { McpClientManager } from "../mcp/client";
@@ -56,6 +57,7 @@ export class AgentRuntime {
 	private mcpClientManager?: McpClientManager;
 	private usageTracker?: UsageTracker;
 	private pluginRegistry?: PluginRegistry;
+	private executionStore = new ExecutionStore();
 	private loopDetector = new LoopDetector();
 	/** Maps YanClaw sessionKey → Agent SDK session ID (for resume). */
 	private sdkSessionIds = new Map<string, string>();
@@ -219,6 +221,14 @@ export class AgentRuntime {
 			]);
 			return;
 		}
+
+		// Track execution for resumability
+		const executionId = this.executionStore.create({
+			sessionKey,
+			agentId,
+			userMessage: message,
+		});
+		const completedToolCalls: string[] = [];
 
 		try {
 			// Ensure workspace dir
@@ -561,6 +571,10 @@ export class AgentRuntime {
 								);
 							}
 
+							// Track completed tool calls for resumability
+							completedToolCalls.push(part.toolName);
+							this.executionStore.updateProgress(executionId, completedToolCalls, fullText);
+
 							yield {
 								type: "tool_result",
 								sessionKey,
@@ -643,6 +657,8 @@ export class AgentRuntime {
 				this.generateTitle(model, message, fullText, sessionKey);
 			}
 
+			// Mark execution as completed
+			this.executionStore.complete(executionId);
 			yield {
 				type: "done",
 				sessionKey,

@@ -242,6 +242,26 @@ const MIGRATIONS = [
 		sql: `ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'private';
 			CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope);`,
 	},
+	{
+		version: 8,
+		name: "agent_executions",
+		sql: `
+			CREATE TABLE IF NOT EXISTS agent_executions (
+				id              TEXT PRIMARY KEY,
+				session_key     TEXT NOT NULL,
+				agent_id        TEXT NOT NULL,
+				status          TEXT NOT NULL,
+				user_message    TEXT NOT NULL,
+				completed_steps TEXT,
+				partial_response TEXT,
+				started_at      INTEGER NOT NULL,
+				updated_at      INTEGER NOT NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_executions_session ON agent_executions(session_key);
+			CREATE INDEX IF NOT EXISTS idx_executions_status ON agent_executions(status);
+		`,
+	},
 ];
 
 export function closeDatabase(): void {
