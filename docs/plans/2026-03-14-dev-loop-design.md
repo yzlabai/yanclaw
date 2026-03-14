@@ -22,7 +22,18 @@
                               ← TestRunner ← IterationJudge ← 事件流 ←┘
 ```
 
-DevLoopController 层叠加在 AgentSupervisor 之上，复用其 spawn/stop/permission/worktree/DAG 能力。
+DevLoopController 层叠加在 AgentSupervisor 之上，复用其 spawn/stop/permission/worktree 能力。
+
+### Claude Code 进程交互模型
+
+Claude Code SDK 的 `query()` 完成后进程变为 idle（`alive = false`）。DevLoopController 采用 **session resume** 模式与 Claude Code 交互：
+
+1. **首次编码**：通过 `supervisor.spawn()` 创建进程，SDK `query()` 执行用户 prompt
+2. **编码完成**：监听 supervisor 的 `process-status` 事件，当进程状态变为 `idle` 时表示编码完成
+3. **迭代反馈**：通过 `supervisor.send()` 发送 feedbackPrompt，SDK 使用 `resumeSessionId` 恢复上下文，发起新 `query()`
+4. **sessionId 追踪**：DevTask 记录 `sessionId`，每次 `send()` 时传递以保持会话连续性
+
+关键：DevLoopController 不关心进程是否 alive，每次迭代都是一次新的 `send()` 调用（会自动 resume session）。
 
 ## §1 核心状态机
 
@@ -57,10 +68,12 @@ stateDiagram-v2
 interface DevTask {
   id: string;
   state: DevTaskState;
+  previousState?: DevTaskState; // waiting_confirm 恢复时回到哪个状态
   prompt: string;              // 用户的开发指令
   projectPath: string;         // 目标项目路径
   worktreePath?: string;       // git worktree 隔离路径
   processId?: string;          // AgentSupervisor 进程 ID
+  sessionId?: string;          // Claude Code SDK session ID，用于 resume
 
   // 迭代控制
   iteration: number;           // 当前迭代次数
@@ -85,7 +98,7 @@ interface DevTask {
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
-  dagId?: string;              // 所属 DAG
+  dagId?: string;              // 所属 DAG（DevLoop 专用 DAG，非 supervisor DAG）
   dagNodeId?: string;
 }
 
@@ -200,7 +213,8 @@ interface VerifyResult {
 - 在 worktreePath（或 projectPath）下依次执行 verifyCommands
 - 短路：第一个命令失败就停止
 - 每个命令超时 5 分钟（可配置 `testTimeoutMs`）
-- 用 `Bun.spawn` 执行，隔离环境变量
+- 用 `Bun.spawn` 执行，环境变量继承父进程但剥离敏感变量（`*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`）
+- 可选配置 `testSandbox: "docker"` 使用 Docker 容器隔离（复用现有 `tools.exec.sandbox` 能力）
 - stdout/stderr 截断保留尾部
 
 **默认验证命令自动检测：**
@@ -259,18 +273,22 @@ ProcessCard 增加迭代进度指示（`第 3/10 次迭代`、当前阶段 badge
 - `triggeredBy === "dashboard"` → 推送到 `agentHub.notifyChannel`
 - 两者都配了则都推
 
-**配置：** `agentHub.devLoop.notifyEvents: DevTaskStage[]`（默认全部推送）
+**配置：** `agentHub.devLoop.notifyEvents`（`null` = 全部推送，`[]` = 不推送，指定数组 = 仅推送列出的阶段）
 
 ## §7 交付流程
 
 任务 `done` 后自动执行：
 
-1. `git add -A && git commit`（在 worktree 中）
-2. 生成 branch：`dev-loop/{taskId}-{prompt前20字slugify}`
-3. `git push origin {branch}`
-4. `gh pr create`
-5. 推送 PR URL 到 Channel
-6. 保留 worktree，用户 merge 后手动清理
+1. 运行 LeakDetector 扫描 worktree diff，检测 secrets/credentials
+2. `git add -u`（仅已跟踪文件）+ `git add` 新增的源码文件（排除 `.env*`, `*.key`, `*.pem`, `node_modules/`）
+3. `git commit`（在 worktree 中）
+4. 生成 branch：`dev-loop/{taskId}-{prompt前20字slugify}`
+5. `git push origin {branch}`（失败则重试 1 次，仍失败 → 转 `blocked`）
+6. `gh pr create`（失败 → 转 `blocked`，通知用户手动处理）
+7. 推送 PR URL 到 Channel
+8. 保留 worktree，用户 merge 后手动清理
+
+**交付失败处理**：步骤 5-6 任一失败 → 状态转为 `blocked`，推送错误详情到 Channel，用户可 `/dev resume` 重试。
 
 **PR Body 模板：**
 
@@ -294,7 +312,14 @@ ProcessCard 增加迭代进度指示（`第 3/10 次迭代`、当前阶段 badge
 
 **DAG 场景：**
 
-- 当前 node 完成 → 标记 DAG node done → 触发下游依赖 node
+DevLoopController 维护独立的 **DevLoop DAG**（与 supervisor 的 TaskDAG 分离），避免状态模型冲突：
+- supervisor DAG node 状态为 `pending/running/completed/failed/skipped`
+- DevLoop DAG node 状态为完整的 DevTaskState（含迭代循环）
+- DevLoopController 为每个 DAG node 创建独立的 supervisor 进程，但不使用 supervisor 的 DAG 调度
+- 依赖管理和拓扑排序由 DevLoopController 自行实现（逻辑可复用 supervisor 的 `topologicalSort`）
+
+流程：
+- 当前 node 完成（DevTask 状态 = `done`）→ DevLoopController 标记 node 完成 → 触发下游依赖 node
 - 最终 node 完成时创建 PR（中间 node 只 commit 不 PR）
 - 可配置为每个 node 独立 PR
 
@@ -319,7 +344,7 @@ packages/server/src/agents/dev-loop/
 | AgentSupervisor | DevLoopController 持有引用，调用 spawn/send/stop，监听事件流 |
 | ConfirmPolicy ↔ Permission | Claude Code 的 permission_request 经 ConfirmationGate 判定 |
 | Notifier | 复用现有 notifier，DevLoopController 发射事件 |
-| DAG | 复用现有 TaskDAG，DevTask 作为 DAG node 执行载体 |
+| DAG | DevLoopController 维护独立的 DevLoop DAG（非 supervisor DAG），仅在全部 node 完成后才通知 supervisor |
 | Routes | 新增 `routes/dev-loop.ts` → `/api/dev-loop/*` |
 | Channel | routing 层注册 `/dev` 前缀命令 |
 | Config | `agentHub.devLoop` 新增配置块 |
@@ -328,22 +353,50 @@ packages/server/src/agents/dev-loop/
 **Gateway 初始化：**
 
 ```typescript
-const devLoop = new DevLoopController({ supervisor, notifier, config });
-ctx.devLoop = devLoop;
+// gateway.ts — GatewayContext 接口新增可选字段
+interface GatewayContext {
+  // ... 现有字段
+  devLoop?: DevLoopController;  // 仅 devLoop.enabled 时创建
+}
+
+// initGateway() 中，在 supervisor 创建之后：
+if (hubCfg.devLoop?.enabled) {
+  const devLoop = new DevLoopController({
+    supervisor,
+    notifier: agentHubNotifier ?? null,  // notifier 可为 null，此时仅 SSE 推送
+    config,
+  });
+  ctx.devLoop = devLoop;
+}
 ```
 
 ## 配置 Schema
 
 ```typescript
-agentHub: {
-  // ... 现有字段
-  devLoop: {
-    enabled: z.boolean().default(false),
-    defaultConfirmPolicy: ConfirmPolicySchema.default(DEFAULT_CONFIRM_POLICY),
-    maxIterations: z.number().default(10),
-    maxDurationMs: z.number().default(4 * 60 * 60 * 1000), // 4h
-    testTimeoutMs: z.number().default(5 * 60 * 1000),       // 5min per command
-    notifyEvents: z.array(z.string()).default([]),           // 空 = 全部
-  }
-}
+// config/schema.ts 新增
+
+const ConfirmPolicySchema = z.object({
+  operations: z.array(z.string()).default([]),
+  stages: z.array(z.enum(["coding", "testing", "delivering"])).default(["delivering"]),
+  riskThreshold: z.enum(["low", "medium", "high", "none"]).default("none"),
+});
+
+const DevLoopSchema = z.object({
+  enabled: z.boolean().default(false),
+  defaultConfirmPolicy: ConfirmPolicySchema.default({}),
+  maxIterations: z.number().min(1).max(50).default(10),
+  maxDurationMs: z.number().default(4 * 60 * 60 * 1000),   // 4h
+  testTimeoutMs: z.number().default(5 * 60 * 1000),         // 5min per command
+  testSandbox: z.enum(["none", "docker"]).default("none"),
+  notifyEvents: z.array(z.enum([
+    "spawning", "coding", "testing", "iterating", "blocked",
+    "waiting_confirm", "done", "delivering", "cancelled",
+  ])).nullable().default(null),  // null = 全部推送，[] = 不推送
+});
+
+// agentHub schema 新增：
+agentHub: z.object({
+  // ... 现有字段保持不变
+  devLoop: DevLoopSchema.default({}),
+})
 ```
