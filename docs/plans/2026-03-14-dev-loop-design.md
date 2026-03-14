@@ -29,11 +29,14 @@ DevLoopController 层叠加在 AgentSupervisor 之上，复用其 spawn/stop/per
 Claude Code SDK 的 `query()` 完成后进程变为 idle（`alive = false`）。DevLoopController 采用 **session resume** 模式与 Claude Code 交互：
 
 1. **首次编码**：通过 `supervisor.spawn()` 创建进程，SDK `query()` 执行用户 prompt
-2. **编码完成**：监听 supervisor 的 `process-status` 事件，当进程状态变为 `idle` 时表示编码完成
-3. **迭代反馈**：通过 `supervisor.send()` 发送 feedbackPrompt，SDK 使用 `resumeSessionId` 恢复上下文，发起新 `query()`
-4. **sessionId 追踪**：DevTask 记录 `sessionId`，每次 `send()` 时传递以保持会话连续性
+2. **编码完成**：监听 supervisor 的 `status-change` 事件（`status: "idle"`），或 `process-stopped` 事件（`reason: "completed"`），表示编码完成
+3. **迭代反馈**：通过 `supervisor.resume(processId, feedbackPrompt)` 发送反馈（新方法，见下）
+4. **sessionId 追踪**：DevTask 记录 `sessionId`，每次 resume 时传递以保持会话连续性
+5. **进程崩溃**：监听 `process-stopped` 事件（`reason: "error"`），转 `blocked` 状态
 
-关键：DevLoopController 不关心进程是否 alive，每次迭代都是一次新的 `send()` 调用（会自动 resume session）。
+**需要新增 `supervisor.resume()` 方法**：现有 `supervisor.send()` 会拒绝 `alive === false` 的进程。新增 `resume(processId, message)` 方法，跳过 alive 检查，直接调用 adapter 的 `send()` 并将进程状态重置为 `running`。ClaudeCodeAdapter 的 `send()` 已支持 `resumeSessionId` 机制。
+
+**防止 stale eviction**：DevLoop 管理的进程在 `idle` 状态时，supervisor 的 stale check（30 分钟 TTL）可能误删进程记录。DevLoopController 在进程 idle 后应立即决定下一步（测试 → 评估 → 迭代/完成），如果需要等待（如 `waiting_confirm`），应定期 touch 进程的 `stoppedAt` 时间戳防止被回收。
 
 ## §1 核心状态机
 
@@ -49,7 +52,10 @@ stateDiagram-v2
     evaluating --> blocked: 死循环检测 / 超限
     iterating --> coding: 将失败信息反馈给 Claude Code
     blocked --> coding: 人工介入后恢复
+    coding --> blocked: 进程崩溃 / SDK 错误
+    spawning --> blocked: 进程启动失败
     done --> delivering: 创建 PR + 通知
+    delivering --> blocked: push/PR 失败
     delivering --> [*]
 
     coding --> waiting_confirm: 命中确认断点
