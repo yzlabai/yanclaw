@@ -1,3 +1,4 @@
+import type { TaskLoopController } from "../agents/task-loop/controller";
 import type { Config, Preference } from "../config/schema";
 import type { ExecutionStore } from "../db/executions";
 import type { SessionStore } from "../db/sessions";
@@ -25,6 +26,7 @@ export class ChannelManager {
 	executions?: ExecutionStore;
 	sttService?: SttService;
 	pluginRegistry?: PluginRegistry;
+	taskLoop?: TaskLoopController | null;
 	onAgentActivity?: (agentId: string, channelId: string) => void;
 	/** Approval responder callback (set from gateway). */
 	onApprovalCommand?: (approvalId: string, decision: "approved" | "denied") => boolean;
@@ -163,6 +165,23 @@ export class ChannelManager {
 		return this.adapters.get(key);
 	}
 
+	/** Send a notification message to a specific channel peer (used by TaskLoop). */
+	sendToChannel(channelId: string, peerId: string, message: string): void {
+		const adapter = this.findAdapterByChannelId(channelId);
+		if (adapter) {
+			adapter
+				.send({ kind: "direct", id: peerId }, { text: message, format: "plain" })
+				.catch((err) => {
+					console.warn(`[channel] Failed to send task loop notification:`, err);
+				});
+		}
+	}
+
+	private findAdapterByChannelId(channelId: string): ChannelAdapter | undefined {
+		// channelId is in format "telegram:accountId" or just the adapter key
+		return this.adapters.get(channelId);
+	}
+
 	/** Remove a registered adapter. */
 	unregister(key: string): void {
 		this.adapters.delete(key);
@@ -216,8 +235,13 @@ export class ChannelManager {
 				config,
 				sessions: this.sessions,
 				executions: this.executions,
+				taskLoop: this.taskLoop,
 				sessionKey: routeForCmd.sessionKey,
 				isOwner: isOwnerSender(msg, config),
+				channelPeer: {
+					channelId: msg.channel,
+					peerId: resolvedPeerIdForCmd,
+				},
 			};
 			const result = await executeSlashCommand(parsed.name, parsed.args, cmdCtx);
 			if (result.handled) {

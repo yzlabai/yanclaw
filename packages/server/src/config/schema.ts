@@ -426,6 +426,49 @@ export const configSchema = z.object({
 			maxConcurrentAgents: z.number().default(5),
 			/** Auto-deny timeout for permission requests, in seconds. */
 			approvalTimeout: z.number().default(1800),
+			/** Task Loop configuration. */
+			taskLoop: z
+				.object({
+					enabled: z.boolean().default(false),
+					defaultConfirmPolicy: z
+						.object({
+							operations: z.array(z.string()).default([]),
+							stages: z
+								.array(z.enum(["executing", "verifying", "delivering"]))
+								.default(["delivering"]),
+							riskThreshold: z.enum(["low", "medium", "high", "none"]).default("none"),
+						})
+						.default({}),
+					maxIterations: z.number().min(1).max(50).default(10),
+					maxDurationMs: z.number().default(4 * 60 * 60 * 1000),
+					notifyEvents: z
+						.array(
+							z.enum([
+								"spawning",
+								"executing",
+								"verifying",
+								"iterating",
+								"blocked",
+								"waiting_confirm",
+								"done",
+								"delivering",
+								"cancelled",
+							]),
+						)
+						.nullable()
+						.default(null),
+					presets: z
+						.object({
+							dev: z
+								.object({
+									testTimeoutMs: z.number().default(5 * 60 * 1000),
+									testSandbox: z.enum(["none", "docker"]).default("none"),
+								})
+								.default({}),
+						})
+						.default({}),
+				})
+				.default({}),
 		})
 		.default({}),
 

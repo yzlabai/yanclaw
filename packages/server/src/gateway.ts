@@ -5,6 +5,8 @@ import { createClaudeCodeAdapter } from "./agents/supervisor/adapters/claude-cod
 import { createCodexAdapter } from "./agents/supervisor/adapters/codex";
 import { createGeminiAdapter } from "./agents/supervisor/adapters/gemini";
 import { AgentHubNotifier } from "./agents/supervisor/notifier";
+import { TaskLoopController } from "./agents/task-loop/controller";
+import { DevPreset } from "./agents/task-loop/presets/dev";
 import { UsageTracker } from "./agents/usage-tracker";
 import { ApprovalManager } from "./approvals";
 import { ChannelManager } from "./channels/manager";
@@ -55,6 +57,7 @@ export interface GatewayContext {
 	usageTracker: UsageTracker;
 	heartbeatRunner: HeartbeatRunner;
 	supervisor: AgentSupervisor;
+	taskLoop: TaskLoopController | null;
 }
 
 let ctx: GatewayContext | null = null;
@@ -144,6 +147,27 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		});
 	}
 
+	// Initialize Task Loop controller if enabled
+	let taskLoop: TaskLoopController | null = null;
+	if (hubCfg.taskLoop?.enabled) {
+		taskLoop = new TaskLoopController({
+			supervisor,
+			config: {
+				defaultConfirmPolicy: hubCfg.taskLoop.defaultConfirmPolicy,
+				maxIterations: hubCfg.taskLoop.maxIterations,
+				maxDurationMs: hubCfg.taskLoop.maxDurationMs,
+			},
+		});
+		taskLoop.registerPreset(DevPreset as never);
+		// Wire leak detector into Dev preset deliverer
+		DevPreset.deliverer.setLeakScanner((text) => leakDetector.scan(text));
+		// Wire notification push to channels
+		taskLoop.onNotify = (channelId, peerId, message) => {
+			channelManager.sendToChannel(channelId, peerId, message);
+		};
+		console.log("[gateway] Task Loop controller initialized");
+	}
+
 	// Register API keys for leak detection
 	leakDetector.registerFromConfig(config.get());
 	config.onChange((cfg) => {
@@ -153,6 +177,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 	// Wire up channel manager → agent runtime
 	channelManager.getConfig = () => config.get();
 	channelManager.setAgentRunner((params) => agentRuntime.run(params));
+	channelManager.taskLoop = taskLoop;
 
 	// Wire up cron → agent runtime
 	cronService.setConfigGetter(() => config.get());
@@ -189,6 +214,7 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		usageTracker,
 		heartbeatRunner,
 		supervisor,
+		taskLoop,
 	};
 
 	return ctx;

@@ -43,7 +43,11 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 		// Run the query in the background — it drives the entire session
 		this.runQuery(options, cc).catch((err) => {
 			const message = err instanceof Error ? err.message : String(err);
-			console.error("[claude-code-adapter] Query failed:", message, err instanceof Error ? err.stack : "");
+			console.error(
+				"[claude-code-adapter] Query failed:",
+				message,
+				err instanceof Error ? err.stack : "",
+			);
 			this.emitEvent({
 				type: "error",
 				sessionKey: this.sessionKey,
@@ -65,6 +69,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 			this.abortController.abort();
 		}
 		this.abortController = new AbortController();
+		this.alive = true;
 
 		const cc = (this.agentConfig.claudeCode ?? {}) as Record<string, unknown>;
 		this.runQuery(

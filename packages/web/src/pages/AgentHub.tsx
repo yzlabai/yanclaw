@@ -3,6 +3,8 @@ import { ProcessCard } from "@yanclaw/web/components/agent-hub/ProcessCard";
 import { ProcessDetail } from "@yanclaw/web/components/agent-hub/ProcessDetail";
 import { SpawnDialog } from "@yanclaw/web/components/agent-hub/SpawnDialog";
 import { TaskDAGView } from "@yanclaw/web/components/agent-hub/TaskDAGView";
+import { TaskLoopCard } from "@yanclaw/web/components/agent-hub/TaskLoopCard";
+import { TaskLoopSpawnDialog } from "@yanclaw/web/components/agent-hub/TaskLoopSpawnDialog";
 import { Badge } from "@yanclaw/web/components/ui/badge";
 import { Button } from "@yanclaw/web/components/ui/button";
 import { Input } from "@yanclaw/web/components/ui/input";
@@ -15,14 +17,23 @@ import {
 } from "@yanclaw/web/components/ui/select";
 import { Skeleton } from "@yanclaw/web/components/ui/skeleton";
 import { useAgentHub } from "@yanclaw/web/hooks/useAgentHub";
-import { AlertTriangle, GitFork, Monitor, Plus, Search } from "lucide-react";
+import { useTaskLoop } from "@yanclaw/web/hooks/useTaskLoop";
+import { AlertTriangle, GitFork, Monitor, Plus, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export function AgentHub() {
 	const { processes, pendingApprovals, loading, spawn, stop, send, approve, startDAG, listDAGs } =
 		useAgentHub();
+	const {
+		tasks: loopTasks,
+		createTask: createLoopTask,
+		approveTask,
+		cancelTask,
+		resumeTask,
+	} = useTaskLoop();
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [spawnOpen, setSpawnOpen] = useState(false);
+	const [taskLoopSpawnOpen, setTaskLoopSpawnOpen] = useState(false);
 	const [approvalOpen, setApprovalOpen] = useState(false);
 	const [showDAGs, setShowDAGs] = useState(false);
 	const [dags, setDags] = useState<Awaited<ReturnType<typeof listDAGs>>>([]);
@@ -88,6 +99,11 @@ export function AgentHub() {
 				<Button onClick={() => setSpawnOpen(true)}>
 					<Plus className="size-4" />
 					启动 Agent
+				</Button>
+
+				<Button variant="outline" onClick={() => setTaskLoopSpawnOpen(true)}>
+					<RefreshCw className="size-4" />
+					Task Loop
 				</Button>
 
 				<Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -161,6 +177,25 @@ export function AgentHub() {
 							onSend={() => setSelectedId(p.id)}
 						/>
 					))}
+
+					{/* Task Loop tasks */}
+					{loopTasks.length > 0 && (
+						<>
+							<div className="flex items-center gap-2 pt-2 pb-1">
+								<RefreshCw className="size-3 text-muted-foreground" />
+								<span className="text-xs text-muted-foreground font-medium">Task Loop</span>
+							</div>
+							{loopTasks.map((t) => (
+								<TaskLoopCard
+									key={t.id}
+									task={t}
+									onApprove={() => approveTask(t.id)}
+									onCancel={() => cancelTask(t.id)}
+									onResume={() => resumeTask(t.id)}
+								/>
+							))}
+						</>
+					)}
 				</div>
 
 				{/* Detail panel */}
@@ -232,6 +267,11 @@ export function AgentHub() {
 
 			{/* Dialogs */}
 			<SpawnDialog open={spawnOpen} onOpenChange={setSpawnOpen} onSpawn={handleSpawn} />
+			<TaskLoopSpawnDialog
+				open={taskLoopSpawnOpen}
+				onOpenChange={setTaskLoopSpawnOpen}
+				onSpawn={createLoopTask}
+			/>
 			<ApprovalQueue
 				open={approvalOpen}
 				onOpenChange={setApprovalOpen}

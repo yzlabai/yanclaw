@@ -209,6 +209,33 @@ export class AgentSupervisor {
 		await adapter.send(message);
 	}
 
+	/**
+	 * Resume an idle/completed process with a new message.
+	 * Unlike send(), this bypasses the isAlive() check and resets
+	 * the process status to "running". Used by TaskLoopController
+	 * for iterative feedback loops.
+	 */
+	async resume(processId: string, message: string): Promise<void> {
+		const adapter = this.adapters.get(processId);
+		if (!adapter) {
+			throw new Error(`Process ${processId} not found`);
+		}
+		// Reset status to running before sending
+		this.updateStatus(processId, "running");
+		await adapter.send(message);
+	}
+
+	/**
+	 * Touch a process's lastActivityAt to prevent stale eviction.
+	 * Used by TaskLoopController for idle processes awaiting confirmation.
+	 */
+	touch(processId: string): void {
+		const process_ = this.processes.get(processId);
+		if (process_) {
+			process_.lastActivityAt = Date.now();
+		}
+	}
+
 	/** Respond to a permission request. */
 	async approve(processId: string, requestId: string, allowed: boolean): Promise<void> {
 		const request = this.pendingApprovals.get(requestId);

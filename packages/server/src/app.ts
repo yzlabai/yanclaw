@@ -21,6 +21,7 @@ import { sessionsRoute } from "./routes/sessions";
 import { skillsRoute } from "./routes/skills";
 import { sttRoute } from "./routes/stt";
 import { systemRoute } from "./routes/system";
+import { taskLoopRoute } from "./routes/task-loop";
 import { usageRoute } from "./routes/usage";
 import { wsRoute } from "./routes/ws";
 
@@ -64,6 +65,7 @@ const apiRoutes = app
 	.route("/system", systemRoute)
 	.route("/audit", auditRoute)
 	.route("/usage", usageRoute)
+	.route("/task-loop", taskLoopRoute)
 	.route("/ws", wsRoute);
 
 export type AppType = typeof apiRoutes;
