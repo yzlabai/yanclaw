@@ -1,6 +1,6 @@
 {
 	"name": "yanclaw",
-	"version": "0.14.0",
+	"version": "0.14.1",
 	"private": true,
 	"workspaces": [
 		"packages/*",
@@ -12,6 +12,7 @@
 		"dev:tauri": "bunx tauri dev",
 		"build": "bun run --filter '*' build",
 		"test": "vitest",
+		"test:smoke": "bun run packages/server/src/smoke.bun.test.ts",
 		"check": "biome check .",
 		"format": "biome format --write .",
 		"yanclaw": "bun run packages/server/src/cli.ts"

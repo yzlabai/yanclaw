@@ -10,5 +10,6 @@ export default defineConfig({
 	},
 	test: {
 		include: ["packages/server/src/**/*.test.ts"],
+		exclude: ["packages/server/src/**/*.bun.test.ts"],
 	},
 });

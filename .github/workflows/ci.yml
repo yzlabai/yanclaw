@@ -25,5 +25,8 @@ jobs:
       - name: Lint
         run: bun run check
 
-      - name: Test
+      - name: Unit tests (Vitest)
         run: bun run test
+
+      - name: Smoke tests (Bun runtime)
+        run: bun run test:smoke

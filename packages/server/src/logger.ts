@@ -3,6 +3,18 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import pino from "pino";
 
+// Resolve transport targets to absolute paths so pino's worker_threads can find them
+// (bare module names fail under Bun's bundler)
+function resolveTransport(name: string): string {
+	try {
+		return import.meta.resolve(name);
+	} catch {
+		return name; // fallback to bare specifier (works in Node.js / Vitest)
+	}
+}
+const PINO_PRETTY_PATH = resolveTransport("pino-pretty");
+const PINO_ROLL_PATH = resolveTransport("pino-roll");
+
 const LOG_DIR = resolve(homedir(), ".yanclaw", "logs");
 
 export type LogLevel = "fatal" | "error" | "warn" | "info" | "debug" | "trace";
@@ -24,7 +36,7 @@ function buildLogger(cfg: LoggingConfig): pino.Logger {
 
 	if (cfg.pretty) {
 		targets.push({
-			target: "pino-pretty",
+			target: PINO_PRETTY_PATH,
 			level: cfg.level,
 			options: { colorize: true, translateTime: "SYS:HH:MM:ss.l", ignore: "pid,hostname" },
 		});
@@ -40,7 +52,7 @@ function buildLogger(cfg: LoggingConfig): pino.Logger {
 			// ignore — will fail at write time if truly broken
 		}
 		targets.push({
-			target: "pino-roll",
+			target: PINO_ROLL_PATH,
 			level: cfg.level,
 			options: {
 				file: resolve(LOG_DIR, "gateway"),

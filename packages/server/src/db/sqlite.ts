@@ -56,7 +56,14 @@ function runMigrations(database: Database): void {
 
 	for (const migration of MIGRATIONS) {
 		if (!applied.has(migration.version)) {
-			database.exec(migration.sql);
+			try {
+				database.exec(migration.sql);
+			} catch (err) {
+				// Tolerate "duplicate column" errors from ALTER TABLE migrations
+				// when the column was already added in a prior CREATE TABLE DDL.
+				const msg = err instanceof Error ? err.message : String(err);
+				if (!msg.includes("duplicate column")) throw err;
+			}
 			database.run("INSERT INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)", [
 				migration.version,
 				migration.name,
