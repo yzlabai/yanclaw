@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import { resolveDataDir } from "../config/store";
 import { mediaFiles } from "../db/schema";
 import { getDb } from "../db/sqlite";
+import { log } from "../logger";
 
 export interface MediaFile {
 	id: string;
@@ -217,7 +218,7 @@ export class MediaStore {
 
 			return { data: new Uint8Array(processed), mimeType: `image/${format}` };
 		} catch (err) {
-			console.warn(`[media] Thumbnail generation failed for ${id}:`, err);
+			log.gateway().warn({ err, mediaId: id }, "thumbnail generation failed");
 			return null;
 		}
 	}
@@ -261,7 +262,7 @@ export class MediaStore {
 				data: new Uint8Array(processed),
 			});
 		} catch (err) {
-			console.warn(`[media] Image processing failed for ${id}:`, err);
+			log.gateway().warn({ err, mediaId: id }, "image processing failed");
 			return null;
 		}
 	}
@@ -280,7 +281,7 @@ export class MediaStore {
 			);
 			return result.text;
 		} catch (err) {
-			console.warn(`[media] PDF text extraction failed for ${id}:`, err);
+			log.gateway().warn({ err, mediaId: id }, "pdf text extraction failed");
 			return null;
 		}
 	}

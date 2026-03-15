@@ -171,6 +171,7 @@ export function Onboarding() {
 	const [telegramToken, setTelegramToken] = useState("");
 	const [slackBotToken, setSlackBotToken] = useState("");
 	const [slackAppToken, setSlackAppToken] = useState("");
+	const [connectedChannels, setConnectedChannels] = useState<string[]>([]);
 
 	const providerDef = PROVIDERS.find((p) => p.id === providerId) ?? PROVIDERS[0];
 	const finalModel = manualInput || availableModels.length === 0 ? customModel : model;
@@ -309,6 +310,25 @@ export function Onboarding() {
 					body: JSON.stringify({ channels }),
 				});
 				if (!res.ok) throw new Error("Failed to save channels");
+
+				// Auto-bind each channel to the default "main" agent
+				const boundTypes: string[] = [];
+				for (const ch of channels) {
+					const channelType = (ch as { type: string }).type;
+					try {
+						const bindRes = await apiFetch(`${API_BASE}/api/routing/bindings`, {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ channel: channelType, agent: "main" }),
+						});
+						if (bindRes.ok) {
+							boundTypes.push(channelType);
+						}
+					} catch {
+						// Binding failure is non-fatal; channel was still saved
+					}
+				}
+				setConnectedChannels(boundTypes);
 			}
 
 			setStep(3);
@@ -622,6 +642,20 @@ export function Onboarding() {
 							<div className="text-5xl">🎉</div>
 							<h2 className="text-2xl font-bold">{t("onboarding.complete.title")}</h2>
 							<p className="text-muted-foreground">{t("onboarding.complete.subtitle")}</p>
+							{connectedChannels.length > 0 && (
+								<div className="bg-muted/50 rounded-xl p-4 text-sm text-left space-y-2">
+									<p className="text-foreground font-medium">
+										你的 AI 助手 (main) 已绑定到以下平台：
+									</p>
+									<ul className="list-disc list-inside text-muted-foreground">
+										{connectedChannels.map((ch) => (
+											<li key={ch} className="capitalize">
+												{ch}
+											</li>
+										))}
+									</ul>
+								</div>
+							)}
 							<Button
 								size="lg"
 								onClick={() => {

@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Config } from "../config/schema";
 import { resolveDataDir } from "../config/store";
+import { log } from "../logger";
 
 const HEARTBEAT_OK_PATTERNS = [
 	/^HEARTBEAT[_\s]?OK$/i,
@@ -82,18 +83,18 @@ export class HeartbeatRunner {
 	): void {
 		const intervalMs = parseDuration(hbConfig.interval);
 		if (!intervalMs) {
-			console.warn(`[heartbeat] Invalid interval "${hbConfig.interval}" for agent ${agentId}`);
+			log.cron().warn({ agentId, interval: hbConfig.interval }, "invalid heartbeat interval");
 			return;
 		}
 
 		const timer = setInterval(() => {
 			this.runHeartbeat(agentId).catch((err) => {
-				console.error(`[heartbeat] Agent ${agentId} error:`, err.message);
+				log.cron().error({ err, agentId }, "heartbeat error");
 			});
 		}, intervalMs);
 
 		this.timers.set(agentId, timer);
-		console.log(`[heartbeat] Started for agent "${agentId}" every ${hbConfig.interval}`);
+		log.cron().info({ agentId, interval: hbConfig.interval }, "heartbeat started");
 	}
 
 	private async runHeartbeat(agentId: string): Promise<void> {
@@ -113,7 +114,7 @@ export class HeartbeatRunner {
 		// Resolve prompt
 		const prompt = await this.resolvePrompt(hb, config);
 		if (!prompt) {
-			console.warn(`[heartbeat] No prompt configured for agent ${agentId}`);
+			log.cron().warn({ agentId }, "no heartbeat prompt configured");
 			return;
 		}
 
@@ -136,7 +137,7 @@ export class HeartbeatRunner {
 				}
 			}
 		} catch (err) {
-			console.error(`[heartbeat] Agent ${agentId} run failed:`, err);
+			log.cron().error({ err, agentId }, "heartbeat run failed");
 			return;
 		}
 
@@ -162,7 +163,7 @@ export class HeartbeatRunner {
 				const filePath = resolve(resolveDataDir(config), hb.promptFile);
 				return await readFile(filePath, "utf-8");
 			} catch {
-				console.warn(`[heartbeat] Could not read prompt file: ${hb.promptFile}`);
+				log.cron().warn({ promptFile: hb.promptFile }, "could not read heartbeat prompt file");
 			}
 		}
 
@@ -188,7 +189,7 @@ export class HeartbeatRunner {
 			try {
 				await this.deliverFn(channelId, text);
 			} catch (err) {
-				console.warn(`[heartbeat] Delivery to ${channelId} failed:`, err);
+				log.cron().warn({ err, channelId }, "heartbeat delivery failed");
 			}
 		}
 	}

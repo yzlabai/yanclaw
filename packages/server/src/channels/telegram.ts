@@ -1,4 +1,5 @@
 import { Bot } from "grammy";
+import { log } from "../logger";
 import { CHANNEL_DOCK } from "./dock";
 import { channelRegistry } from "./registry";
 import type {
@@ -106,13 +107,13 @@ export class TelegramAdapter implements ChannelAdapter {
 				try {
 					await handler(inbound);
 				} catch (err) {
-					console.error("[telegram] Handler error:", err);
+					log.channel().error({ err, accountId: this.id }, "handler error");
 				}
 			}
 		});
 
 		this.bot.catch((err) => {
-			console.error("[telegram] Bot error:", err.message);
+			log.channel().error({ err, accountId: this.id }, "bot error");
 			this.status = "error";
 		});
 	}
@@ -194,7 +195,7 @@ export class TelegramAdapter implements ChannelAdapter {
 				});
 			}
 		} catch (err) {
-			console.error("[telegram] Failed to extract attachments:", err);
+			log.channel().error({ err, accountId: this.id }, "failed to extract attachments");
 		}
 
 		return attachments;
@@ -204,7 +205,9 @@ export class TelegramAdapter implements ChannelAdapter {
 		this.status = "connecting";
 		try {
 			await this.bot.init();
-			console.log(`[telegram] Bot @${this.bot.botInfo.username} connected (${this.id})`);
+			log
+				.channel()
+				.info({ accountId: this.id, username: this.bot.botInfo.username }, "bot connected");
 			this.status = "connected";
 
 			// Start polling in background (non-blocking)
@@ -249,8 +252,22 @@ export class TelegramAdapter implements ChannelAdapter {
 			const result = await this.bot.api.sendMessage(chatId, content.text, opts);
 			return String(result.message_id);
 		} catch (err) {
-			console.error("[telegram] Send error:", err);
+			log.channel().error({ err, accountId: this.id, peer: peer.id }, "send error");
 			return null;
+		}
+	}
+
+	async editMessage(messageId: string, peer: Peer, content: OutboundMessage): Promise<boolean> {
+		try {
+			const opts: Record<string, unknown> = {};
+			if (content.format === "markdown") {
+				opts.parse_mode = "Markdown";
+			}
+			await this.bot.api.editMessageText(Number(peer.id), Number(messageId), content.text, opts);
+			return true;
+		} catch (err) {
+			log.channel().error({ err, accountId: this.id, messageId, peer: peer.id }, "edit error");
+			return false;
 		}
 	}
 

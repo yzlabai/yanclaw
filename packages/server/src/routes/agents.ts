@@ -3,14 +3,31 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getGateway } from "../gateway";
 
+const toolPolicySchema = z
+	.object({
+		allow: z.array(z.string()).optional(),
+		deny: z.array(z.string()).optional(),
+	})
+	.optional();
+
+const capabilitiesSchema = z
+	.union([
+		z.array(z.string()), // ["fs:read", "net:http"]
+		z.string(), // "researcher" (preset name)
+	])
+	.optional();
+
 const createAgentSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),
 	model: z.string().default("claude-sonnet-4-20250514"),
 	systemPrompt: z.string().default("You are a helpful assistant."),
 	runtime: z.enum(["default", "claude-code"]).default("default"),
+	taskEnabled: z.boolean().default(false),
 	workspaceDir: z.string().optional(),
 	preference: z.enum(["default", "fast", "quality", "cheap"]).optional(),
+	tools: toolPolicySchema,
+	capabilities: capabilitiesSchema,
 });
 
 const updateAgentSchema = z.object({
@@ -18,8 +35,11 @@ const updateAgentSchema = z.object({
 	model: z.string().optional(),
 	systemPrompt: z.string().optional(),
 	runtime: z.enum(["default", "claude-code"]).optional(),
+	taskEnabled: z.boolean().optional(),
 	workspaceDir: z.string().optional(),
 	preference: z.enum(["default", "fast", "quality", "cheap"]).optional(),
+	tools: toolPolicySchema,
+	capabilities: capabilitiesSchema,
 });
 
 export const agentsRoute = new Hono()
@@ -32,8 +52,11 @@ export const agentsRoute = new Hono()
 				model: a.model,
 				systemPrompt: a.systemPrompt,
 				runtime: a.runtime,
+				taskEnabled: a.taskEnabled,
 				workspaceDir: a.workspaceDir,
 				preference: a.preference,
+				tools: a.tools,
+				capabilities: a.capabilities,
 			})),
 		);
 	})

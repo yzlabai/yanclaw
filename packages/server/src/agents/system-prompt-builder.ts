@@ -34,6 +34,8 @@ export interface PromptContext {
 	workspaceDir?: string;
 	/** Sanitized skill prompts to inject (already wrapped in boundary markers). */
 	skillPrompts?: string[];
+	/** Pre-heated PIM context string (already formatted). */
+	pimContext?: string;
 }
 
 const BOOTSTRAP_FILES = ["SOUL.md", "TOOLS.md", "MEMORY.md", "CONTEXT.md"];
@@ -80,6 +82,11 @@ export async function buildSystemPrompt(ctx: PromptContext): Promise<string> {
 	}
 	if (ctx.config.memory.enabled) {
 		sections.push(buildMemoryGuidelines());
+	}
+
+	// 4.5. PIM context (structured personal information)
+	if (ctx.pimContext) {
+		sections.push(ctx.pimContext);
 	}
 
 	// 5. Runtime info (minimal + full)

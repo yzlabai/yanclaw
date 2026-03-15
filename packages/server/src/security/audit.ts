@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { log } from "../logger";
 
 export interface AuditEntry {
 	actor: string;
@@ -106,7 +107,7 @@ export class AuditLogger {
 			// Only clear buffer after successful write
 			this.buffer.splice(0, entries.length);
 		} catch (err) {
-			console.error("[audit] Flush failed, entries retained for retry:", err);
+			log.security().error({ err }, "audit flush failed, entries retained for retry");
 		}
 	}
 

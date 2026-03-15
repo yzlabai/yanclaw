@@ -138,6 +138,57 @@ export const agentExecutions = sqliteTable(
 	],
 );
 
+export const pimItems = sqliteTable(
+	"pim_items",
+	{
+		id: text("id").primaryKey(),
+		category: text("category").notNull(), // person, event, thing, place, time, info, org, ledger
+		subtype: text("subtype"),
+		title: text("title").notNull(),
+		content: text("content"),
+		properties: text("properties").default("{}"),
+		tags: text("tags").default("[]"),
+		status: text("status"),
+		datetime: text("datetime"),
+		confidence: real("confidence").default(1.0),
+		sourceIds: text("source_ids").default("[]"),
+		agentId: text("agent_id"),
+		reminded: integer("reminded").default(0).notNull(), // 0=not reminded, 1=reminded
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [
+		index("idx_pim_category").on(table.category),
+		index("idx_pim_subtype").on(table.subtype),
+		index("idx_pim_status").on(table.status),
+		index("idx_pim_datetime").on(table.datetime),
+		index("idx_pim_title").on(table.title),
+		index("idx_pim_created").on(table.createdAt),
+	],
+);
+
+export const pimLinks = sqliteTable(
+	"pim_links",
+	{
+		id: text("id").primaryKey(),
+		fromId: text("from_id")
+			.notNull()
+			.references(() => pimItems.id, { onDelete: "cascade" }),
+		toId: text("to_id")
+			.notNull()
+			.references(() => pimItems.id, { onDelete: "cascade" }),
+		type: text("type").notNull(),
+		properties: text("properties").default("{}"),
+		confidence: real("confidence").default(1.0),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [
+		index("idx_pim_links_from").on(table.fromId),
+		index("idx_pim_links_to").on(table.toId),
+		index("idx_pim_links_type").on(table.type),
+	],
+);
+
 export const memories = sqliteTable(
 	"memories",
 	{

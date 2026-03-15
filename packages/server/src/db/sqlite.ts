@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 import { resolveDataDir } from "../config/store";
+import { log } from "../logger";
 import * as schema from "./schema";
 
 let db: BunSQLiteDatabase<typeof schema> | null = null;
@@ -61,7 +62,7 @@ function runMigrations(database: Database): void {
 				migration.name,
 				Date.now(),
 			]);
-			console.log(`[db] Applied migration ${migration.version}: ${migration.name}`);
+			log.db().info({ version: migration.version, name: migration.name }, "applied migration");
 		}
 	}
 }
@@ -261,6 +262,55 @@ const MIGRATIONS = [
 			CREATE INDEX IF NOT EXISTS idx_executions_session ON agent_executions(session_key);
 			CREATE INDEX IF NOT EXISTS idx_executions_status ON agent_executions(status);
 		`,
+	},
+	{
+		version: 9,
+		name: "pim_tables",
+		sql: `
+			CREATE TABLE IF NOT EXISTS pim_items (
+				id          TEXT PRIMARY KEY,
+				category    TEXT NOT NULL,
+				subtype     TEXT,
+				title       TEXT NOT NULL,
+				content     TEXT,
+				properties  TEXT DEFAULT '{}',
+				tags        TEXT DEFAULT '[]',
+				status      TEXT,
+				datetime    TEXT,
+				reminded    INTEGER NOT NULL DEFAULT 0,
+				confidence  REAL DEFAULT 1.0,
+				source_ids  TEXT DEFAULT '[]',
+				agent_id    TEXT,
+				created_at  INTEGER NOT NULL,
+				updated_at  INTEGER NOT NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_pim_category ON pim_items(category);
+			CREATE INDEX IF NOT EXISTS idx_pim_subtype ON pim_items(subtype);
+			CREATE INDEX IF NOT EXISTS idx_pim_status ON pim_items(status);
+			CREATE INDEX IF NOT EXISTS idx_pim_datetime ON pim_items(datetime);
+			CREATE INDEX IF NOT EXISTS idx_pim_title ON pim_items(title);
+			CREATE INDEX IF NOT EXISTS idx_pim_created ON pim_items(created_at);
+
+			CREATE TABLE IF NOT EXISTS pim_links (
+				id          TEXT PRIMARY KEY,
+				from_id     TEXT NOT NULL REFERENCES pim_items(id) ON DELETE CASCADE,
+				to_id       TEXT NOT NULL REFERENCES pim_items(id) ON DELETE CASCADE,
+				type        TEXT NOT NULL,
+				properties  TEXT DEFAULT '{}',
+				confidence  REAL DEFAULT 1.0,
+				created_at  INTEGER NOT NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_pim_links_from ON pim_links(from_id);
+			CREATE INDEX IF NOT EXISTS idx_pim_links_to ON pim_links(to_id);
+			CREATE INDEX IF NOT EXISTS idx_pim_links_type ON pim_links(type);
+		`,
+	},
+	{
+		version: 10,
+		name: "pim_reminded",
+		sql: `ALTER TABLE pim_items ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0;`,
 	},
 ];
 

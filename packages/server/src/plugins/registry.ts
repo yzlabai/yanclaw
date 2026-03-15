@@ -1,4 +1,5 @@
 import { channelRegistry } from "../channels/registry";
+import { log } from "../logger";
 import type { SkillDefinition } from "./skill-loader";
 import type { PluginChannelFactory, PluginDefinition, PluginHooks, PluginToolDef } from "./types";
 
@@ -11,7 +12,7 @@ export class PluginRegistry {
 
 	register(plugin: PluginDefinition): void {
 		if (this.plugins.has(plugin.id)) {
-			console.warn(`[plugins] Plugin "${plugin.id}" already registered, skipping`);
+			log.plugin().warn({ pluginId: plugin.id }, "plugin already registered, skipping");
 			return;
 		}
 
@@ -22,7 +23,7 @@ export class PluginRegistry {
 			for (const tool of plugin.tools) {
 				const key = `${plugin.id}.${tool.name}`;
 				if (this.toolMap.has(key)) {
-					console.warn(`[plugins] Tool "${key}" already registered, skipping`);
+					log.plugin().warn({ tool: key }, "tool already registered, skipping");
 					continue;
 				}
 				this.toolMap.set(key, tool);
@@ -33,7 +34,9 @@ export class PluginRegistry {
 		if (plugin.channels) {
 			for (const factory of plugin.channels) {
 				if (this.channelFactories.has(factory.type)) {
-					console.warn(`[plugins] Channel type "${factory.type}" already registered, skipping`);
+					log
+						.plugin()
+						.warn({ channelType: factory.type }, "channel type already registered, skipping");
 					continue;
 				}
 				this.channelFactories.set(factory.type, factory);
@@ -59,7 +62,7 @@ export class PluginRegistry {
 			this.hooksList.push({ pluginId: plugin.id, hooks: plugin.hooks });
 		}
 
-		console.log(`[plugins] Registered "${plugin.name}" v${plugin.version}`);
+		log.plugin().info({ name: plugin.name, version: plugin.version }, "plugin registered");
 	}
 
 	unregister(pluginId: string): void {
@@ -145,7 +148,7 @@ export class PluginRegistry {
 			try {
 				await hooks.onGatewayStart(ctx);
 			} catch (err) {
-				console.error(`[plugins] "${pluginId}" onGatewayStart error:`, err);
+				log.plugin().error({ err, pluginId }, "onGatewayStart hook error");
 			}
 		}
 	}
@@ -157,7 +160,7 @@ export class PluginRegistry {
 			try {
 				await hooks.onGatewayStop();
 			} catch (err) {
-				console.error(`[plugins] "${pluginId}" onGatewayStop error:`, err);
+				log.plugin().error({ err, pluginId }, "onGatewayStop hook error");
 			}
 		}
 	}
@@ -172,7 +175,7 @@ export class PluginRegistry {
 				if (result === null) return null;
 				current = result;
 			} catch (err) {
-				console.error(`[plugins] "${pluginId}" onMessageInbound error:`, err);
+				log.plugin().error({ err, pluginId }, "onMessageInbound hook error");
 			}
 		}
 		return current;
@@ -188,7 +191,7 @@ export class PluginRegistry {
 				if (result === null) return null;
 				current = result;
 			} catch (err) {
-				console.error(`[plugins] "${pluginId}" beforeToolCall error:`, err);
+				log.plugin().error({ err, pluginId }, "beforeToolCall hook error");
 			}
 		}
 		return current;
@@ -201,7 +204,7 @@ export class PluginRegistry {
 			try {
 				await hooks.afterToolCall(call, result);
 			} catch (err) {
-				console.error(`[plugins] "${pluginId}" afterToolCall error:`, err);
+				log.plugin().error({ err, pluginId }, "afterToolCall hook error");
 			}
 		}
 	}

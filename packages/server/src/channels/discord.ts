@@ -1,4 +1,5 @@
 import { Client, Events, GatewayIntentBits, type Message } from "discord.js";
+import { log } from "../logger";
 import { CHANNEL_DOCK } from "./dock";
 import { channelRegistry } from "./registry";
 import type {
@@ -112,7 +113,7 @@ export class DiscordAdapter implements ChannelAdapter {
 				try {
 					await handler(inbound);
 				} catch (err) {
-					console.error("[discord] Handler error:", err);
+					log.channel().error({ err, accountId: this.id }, "handler error");
 				}
 			}
 		});
@@ -129,7 +130,7 @@ export class DiscordAdapter implements ChannelAdapter {
 					this.client.once(Events.ClientReady, () => resolve());
 				}
 			});
-			console.log(`[discord] Bot connected as ${this.client.user?.tag} (${this.id})`);
+			log.channel().info({ accountId: this.id, tag: this.client.user?.tag }, "bot connected");
 			this.status = "connected";
 		} catch (err) {
 			this.status = "error";
@@ -184,8 +185,25 @@ export class DiscordAdapter implements ChannelAdapter {
 
 			return lastId;
 		} catch (err) {
-			console.error("[discord] Send error:", err);
+			log.channel().error({ err, accountId: this.id, peer: peer.id }, "send error");
 			return null;
+		}
+	}
+
+	async editMessage(messageId: string, peer: Peer, content: OutboundMessage): Promise<boolean> {
+		try {
+			const channel = await this.client.channels.fetch(peer.id);
+			if (channel?.isTextBased() && "messages" in channel) {
+				const msg = await (
+					channel as { messages: { fetch(id: string): Promise<Message> } }
+				).messages.fetch(messageId);
+				await msg.edit(content.text);
+				return true;
+			}
+			return false;
+		} catch (err) {
+			log.channel().error({ err, accountId: this.id, messageId, peer: peer.id }, "edit error");
+			return false;
 		}
 	}
 

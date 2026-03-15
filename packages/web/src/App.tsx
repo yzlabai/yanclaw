@@ -1,4 +1,5 @@
 import {
+	Activity,
 	BookOpen,
 	Bot,
 	Clock,
@@ -6,6 +7,7 @@ import {
 	LayoutDashboard,
 	Menu,
 	MessageSquare,
+	Network,
 	PanelLeftClose,
 	PanelLeftOpen,
 	Plug,
@@ -37,9 +39,11 @@ import { Agents } from "./pages/Agents";
 import { Channels } from "./pages/Channels";
 import { Chat } from "./pages/Chat";
 import { Cron } from "./pages/Cron";
+import { Dashboard } from "./pages/Dashboard";
 import { Knowledge } from "./pages/Knowledge";
 import { McpServers } from "./pages/McpServers";
 import { Onboarding } from "./pages/Onboarding";
+import { Pim } from "./pages/Pim";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
 import { Skills } from "./pages/Skills";
@@ -88,6 +92,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 
 const NAV_ITEMS = [
 	{ to: "/", labelKey: "nav.chat", icon: MessageSquare },
+	{ to: "/dashboard", labelKey: "nav.dashboard", icon: Activity },
 	{ to: "/agent-hub", labelKey: "nav.agentHub", icon: LayoutDashboard },
 	{ to: "/sessions", labelKey: "nav.sessions", icon: History },
 	{ to: "/agents", labelKey: "nav.agents", icon: Bot },
@@ -95,6 +100,7 @@ const NAV_ITEMS = [
 	{ to: "/skills", labelKey: "nav.skills", icon: Puzzle },
 	{ to: "/mcp", labelKey: "nav.mcp", icon: Plug },
 	{ to: "/cron", labelKey: "nav.cron", icon: Clock },
+	{ to: "/pim", labelKey: "nav.pim", icon: Network },
 	{ to: "/knowledge", labelKey: "nav.knowledge", icon: BookOpen },
 	{ to: "/settings", labelKey: "nav.settings", icon: SettingsIcon },
 ];
@@ -265,6 +271,7 @@ function AppLayout() {
 				<main className="flex-1 overflow-hidden">
 					<Routes>
 						<Route path="/" element={<Chat />} />
+						<Route path="/dashboard" element={<Dashboard />} />
 						<Route path="/channels" element={<Channels />} />
 						<Route path="/agent-hub" element={<AgentHub />} />
 						<Route path="/sessions" element={<Sessions />} />
@@ -272,6 +279,7 @@ function AppLayout() {
 						<Route path="/cron" element={<Cron />} />
 						<Route path="/agents" element={<Agents />} />
 						<Route path="/skills" element={<Skills />} />
+						<Route path="/pim" element={<Pim />} />
 						<Route path="/knowledge" element={<Knowledge />} />
 						<Route path="/settings" element={<Settings />} />
 						<Route path="/onboarding" element={<Onboarding />} />

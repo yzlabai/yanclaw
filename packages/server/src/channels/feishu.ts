@@ -1,4 +1,5 @@
 import * as lark from "@larksuiteoapi/node-sdk";
+import { log } from "../logger";
 import { CHANNEL_DOCK } from "./dock";
 import { channelRegistry } from "./registry";
 import type {
@@ -83,10 +84,10 @@ export class FeishuAdapter implements ChannelAdapter {
 
 			await this.wsClient.start();
 			this.status = "connected";
-			console.log(`[feishu] Adapter ${this.id} connected via WebSocket`);
+			log.channel().info({ accountId: this.id }, "adapter connected via websocket");
 		} catch (err) {
 			this.status = "error";
-			console.error(`[feishu] Adapter ${this.id} connection failed:`, err);
+			log.channel().error({ err, accountId: this.id }, "adapter connection failed");
 			throw err;
 		}
 	}
@@ -136,7 +137,7 @@ export class FeishuAdapter implements ChannelAdapter {
 
 			return resp?.data?.message_id ?? null;
 		} catch (err) {
-			console.error(`[feishu] Failed to send message:`, err);
+			log.channel().error({ err, accountId: this.id, peer: peer.id }, "failed to send message");
 			return null;
 		}
 	}
@@ -224,7 +225,7 @@ export class FeishuAdapter implements ChannelAdapter {
 			try {
 				await handler(inbound);
 			} catch (err) {
-				console.error("[feishu] Message handler error:", err);
+				log.channel().error({ err, accountId: this.id }, "message handler error");
 			}
 		}
 	}

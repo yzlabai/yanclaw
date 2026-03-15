@@ -2,6 +2,7 @@ import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
+import { log } from "../../logger";
 import type { MediaStore } from "../../media";
 import { truncateOutput } from "./common";
 
@@ -125,10 +126,7 @@ export function createFileWriteTool(opts: {
 							size: data.byteLength,
 						});
 					} catch (err) {
-						console.warn(
-							"[file_write] Media storage failed:",
-							err instanceof Error ? err.message : err,
-						);
+						log.agent().warn({ err, toolName: "file_write", path }, "media storage failed");
 						return `File written: ${path} (media storage unavailable)`;
 					}
 				}

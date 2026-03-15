@@ -2,6 +2,7 @@ import { APP_NAME, VERSION } from "@yanclaw/shared/constants";
 import { Hono } from "hono";
 import { clearWebCache } from "../agents/tools/web";
 import { getGateway } from "../gateway";
+import { log } from "../logger";
 
 const startedAt = Date.now();
 
@@ -73,12 +74,34 @@ export const systemRoute = new Hono()
 
 		return c.json({ needsSetup: !hasProvider });
 	})
+	.get("/errors", (c) => {
+		const gw = getGateway();
+		if (!gw.errorCollector) return c.json({ errors: [], total: 0, stats: null });
+
+		const module = c.req.query("module");
+		const severity = c.req.query("severity");
+		const sinceStr = c.req.query("since");
+		const limit = Number(c.req.query("limit") || "50");
+		const offset = Number(c.req.query("offset") || "0");
+
+		const since = sinceStr ? Number(sinceStr) : undefined;
+		const { errors, total } = gw.errorCollector.query({ module, severity, since, limit, offset });
+		const stats = gw.errorCollector.stats();
+
+		return c.json({ errors, total, stats });
+	})
+	.get("/errors/recent", (c) => {
+		const gw = getGateway();
+		if (!gw.errorCollector) return c.json([]);
+		const limit = Number(c.req.query("limit") || "50");
+		return c.json(gw.errorCollector.recent(limit));
+	})
 	.post("/shutdown", async (c) => {
 		const gw = getGateway();
 
 		// Respond first, then shut down
 		setTimeout(async () => {
-			console.log("[gateway] Shutdown requested via API");
+			log.gateway().info("shutdown requested via API");
 			await gw.mcpClientManager.stopAll();
 			await gw.channelManager.disconnectAll();
 			gw.channelManager.stopHealthMonitor();

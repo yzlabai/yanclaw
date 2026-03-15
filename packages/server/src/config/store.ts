@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import JSON5 from "json5";
+import { log } from "../logger";
 import { CREDENTIAL_FIELDS, CredentialVault, expandVaultRefs } from "../security/vault";
 import { type Config, configSchema } from "./schema";
 
@@ -29,7 +30,7 @@ function migrateChannelsConfig(raw: unknown): unknown {
 			}
 		}
 		if (entries.length > 0) {
-			console.log("[config] Migrated channels from object to array format");
+			log.config().info("migrated channels from object to array format");
 			obj.channels = entries;
 		} else {
 			obj.channels = [];
@@ -58,9 +59,11 @@ export function migrateConfig(raw: unknown): unknown {
 	const hasOldFormat = knownProviders.some((k) => k in models);
 	if (!hasOldFormat) return raw;
 
-	console.warn(
-		"[config] Detected old models format, migrating to providers format. Please update your config file.",
-	);
+	log
+		.config()
+		.warn(
+			"detected old models format, migrating to providers format — please update your config file",
+		);
 
 	const providers: Record<string, unknown> = {};
 	for (const [name, value] of Object.entries(models)) {
@@ -79,9 +82,12 @@ export function migrateConfig(raw: unknown): unknown {
 function detectPlaintextCredentials(obj: unknown): void {
 	const count = countPlaintext(obj);
 	if (count > 0) {
-		console.warn(
-			`[config] ⚠️  Detected ${count} plaintext credential(s). Run: bun run packages/server/src/security/vault-migrate.ts`,
-		);
+		log
+			.config()
+			.warn(
+				{ count },
+				"detected plaintext credentials — run: bun run packages/server/src/security/vault-migrate.ts",
+			);
 	}
 }
 
@@ -223,7 +229,7 @@ export class ConfigStore {
 				expanded = expandVaultRefs(expanded, vault);
 			}
 		} catch (err) {
-			console.warn("[config] Vault initialization failed, credentials will not be decrypted:", err);
+			log.config().warn({ err }, "vault initialization failed, credentials will not be decrypted");
 		}
 
 		const config = configSchema.parse(expanded);
@@ -291,9 +297,9 @@ export class ConfigStore {
 
 					this.config = newConfig;
 					this.notifyListeners();
-					console.log("[config] Hot-reloaded config");
+					log.config().info("hot-reloaded config");
 				} catch (err) {
-					console.error("[config] Reload failed, keeping old config:", err);
+					log.config().error({ err }, "reload failed, keeping old config");
 				}
 			});
 		} catch {
@@ -306,7 +312,7 @@ export class ConfigStore {
 			try {
 				listener(this.config);
 			} catch (err) {
-				console.error("[config] Listener error:", err);
+				log.config().error({ err }, "listener error");
 			}
 		}
 	}

@@ -4,6 +4,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
+import { log } from "../../logger";
 import type { CodeExecConfig } from "./code-exec-runner";
 import { detectRuntime, executeCode } from "./code-exec-runner";
 
@@ -30,7 +31,7 @@ export function createCodeExecTool(opts: { workspaceDir: string; config: CodeExe
 			// Lazy-detect runtime on first call
 			if (!resolvedRuntime) {
 				resolvedRuntime = await detectRuntime(opts.config);
-				console.log(`[code_exec] Using runtime: ${resolvedRuntime}`);
+				log.agent().info({ runtime: resolvedRuntime }, "code_exec runtime detected");
 			}
 
 			const result = await executeCode({

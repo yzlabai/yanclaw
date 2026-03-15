@@ -1,5 +1,6 @@
 import { CronExpressionParser } from "cron-parser";
 import type { Config } from "../config/schema";
+import { log } from "../logger";
 
 /** Parse a duration string like "30s", "5m", "2h", "1d" to milliseconds. */
 function parseDuration(s: string): number | null {
@@ -94,7 +95,7 @@ export class CronService {
 		// Run first tick immediately
 		this.tick();
 
-		console.log("[cron] Scheduler started");
+		log.cron().info("scheduler started");
 	}
 
 	/** Stop the scheduler. */
@@ -103,7 +104,7 @@ export class CronService {
 			clearInterval(this.timer);
 			this.timer = null;
 		}
-		console.log("[cron] Scheduler stopped");
+		log.cron().info("scheduler stopped");
 	}
 
 	/** Refresh schedules from config. */
@@ -187,7 +188,7 @@ export class CronService {
 			if (now >= state.nextRunAt) {
 				// Fire and forget
 				this.executeTask(task, config).catch((err) => {
-					console.error(`[cron] Task "${task.id}" failed:`, err.message);
+					log.cron().error({ err, taskId: task.id }, "task failed");
 				});
 			}
 		}
@@ -234,7 +235,7 @@ export class CronService {
 						await this.deliverCallback(target.channel, target.peer, fullText);
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
-						console.warn(`[cron] Delivery to ${target.channel} failed:`, msg);
+						log.cron().warn({ channel: target.channel, error: msg }, "delivery failed");
 						deliveryFailures.push(`${target.channel}: ${msg}`);
 					}
 				}
@@ -249,7 +250,7 @@ export class CronService {
 			// Compute next run (one-time tasks don't repeat)
 			if (task.mode === "once") {
 				this.taskStates.delete(task.id);
-				console.log(`[cron] One-time task "${task.id}" completed, removed from schedule`);
+				log.cron().info({ taskId: task.id }, "one-time task completed, removed from schedule");
 			} else {
 				const nextRun = this.computeNextRun(task.schedule, task.mode);
 				if (nextRun) {
@@ -276,7 +277,7 @@ export class CronService {
 			const ts = Number(schedule);
 			const target = Number.isNaN(ts) ? new Date(schedule).getTime() : ts;
 			if (Number.isNaN(target)) {
-				console.warn(`[cron] Invalid one-time schedule: ${schedule}`);
+				log.cron().warn({ schedule }, "invalid one-time schedule");
 				return null;
 			}
 			return target > Date.now() ? target : null;
@@ -286,7 +287,7 @@ export class CronService {
 			// Interval: schedule is a duration string like "5m", "1h", "30s"
 			const ms = parseDuration(schedule);
 			if (!ms) {
-				console.warn(`[cron] Invalid interval: ${schedule}`);
+				log.cron().warn({ schedule }, "invalid interval");
 				return null;
 			}
 			return Date.now() + ms;
@@ -298,7 +299,7 @@ export class CronService {
 			const next = interval.next();
 			return next.getTime();
 		} catch {
-			console.warn(`[cron] Invalid schedule expression: ${schedule}`);
+			log.cron().warn({ schedule }, "invalid schedule expression");
 			return null;
 		}
 	}

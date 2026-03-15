@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveDataDir } from "../config/store";
+import { log } from "../logger";
 
 /**
  * Automatic token rotation with grace period.
@@ -51,7 +52,7 @@ export class TokenRotation {
 			const tokenPath = join(resolveDataDir(), "auth.token");
 			await writeFile(tokenPath, newToken, "utf-8");
 		} catch (err) {
-			console.error("[security] Failed to write rotated token, aborting rotation:", err);
+			log.security().error({ err }, "failed to write rotated token, aborting rotation");
 			return this.currentToken;
 		}
 
@@ -70,7 +71,7 @@ export class TokenRotation {
 		this.graceTimer.unref();
 
 		this.onRotate(newToken);
-		console.log("[security] Auth token rotated, grace period active");
+		log.security().info("auth token rotated, grace period active");
 		return newToken;
 	}
 

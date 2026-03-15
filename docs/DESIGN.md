@@ -28,7 +28,9 @@
 │  │  │  /api/config   → ConfigHandler  (GET + PATCH)            │   │   │
 │  │  │  /api/cron     → CronHandler    (CRUD + run)             │   │   │
 │  │  │  /api/media    → MediaHandler   (upload + serve)         │   │   │
-│  │  │  /api/system   → SystemHandler  (health + status)        │   │   │
+│  │  │  /api/routing  → RoutingHandler (bindings CRUD + debug)   │   │   │
+│  │  │  /api/tools    → ToolsHandler  (metadata)               │   │   │
+│  │  │  /api/system   → SystemHandler  (health + status + errors)│   │   │
 │  │  │  /api/ws       → WebSocket      (JSON-RPC 2.0)          │   │   │
 │  │  └─────────────────────────────────────────────────────────┘   │   │
 │  │           │                │                │                   │   │

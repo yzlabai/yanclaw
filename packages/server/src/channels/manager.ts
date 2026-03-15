@@ -1,7 +1,9 @@
 import type { TaskLoopController } from "../agents/task-loop/controller";
-import type { Config, Preference } from "../config/schema";
+import { withRetry } from "../agents/tools/retry";
+import type { Config, Preference, RetryConfig } from "../config/schema";
 import type { ExecutionStore } from "../db/executions";
 import type { SessionStore } from "../db/sessions";
+import { log } from "../logger";
 import type { SttService } from "../media/stt";
 import type { PluginRegistry } from "../plugins/registry";
 import { resolveIdentity, resolveRoute } from "../routing/resolve";
@@ -79,7 +81,7 @@ export class ChannelManager {
 		for (const [key, adapter] of this.adapters) {
 			promises.push(
 				adapter.connect().catch((err) => {
-					console.error(`[channel] Failed to connect ${key}:`, err.message);
+					log.channel().error({ err, key }, "failed to connect adapter");
 				}),
 			);
 		}
@@ -116,18 +118,15 @@ export class ChannelManager {
 				// Reset tick counter for next cycle
 				this.reconnectAttempts.set(`${key}:tick`, 0);
 
-				console.log(`[channel] Reconnecting ${key} (attempt ${attempts + 1})...`);
+				log.channel().info({ key, attempt: attempts + 1 }, "reconnecting adapter");
 				try {
 					await adapter.disconnect().catch(() => {});
 					await adapter.connect();
 					this.reconnectAttempts.set(key, 0);
-					console.log(`[channel] Reconnected ${key} successfully`);
+					log.channel().info({ key }, "reconnected adapter successfully");
 				} catch (err) {
 					this.reconnectAttempts.set(key, attempts + 1);
-					console.error(
-						`[channel] Reconnect ${key} failed:`,
-						err instanceof Error ? err.message : err,
-					);
+					log.channel().error({ err, key }, "reconnect failed");
 				}
 			} else if (adapter.status === "connected") {
 				// Reset attempts on healthy connection
@@ -172,7 +171,7 @@ export class ChannelManager {
 			adapter
 				.send({ kind: "direct", id: peerId }, { text: message, format: "plain" })
 				.catch((err) => {
-					console.warn(`[channel] Failed to send task loop notification:`, err);
+					log.channel().warn({ err, channelId, peerId }, "failed to send task loop notification");
 				});
 		}
 	}
@@ -192,7 +191,7 @@ export class ChannelManager {
 		// We need a config to route. This is injected via gateway.
 		const config = this.getConfig?.();
 		if (!config) {
-			console.warn("[channel] No config available, dropping message");
+			log.channel().warn("no config available, dropping message");
 			return;
 		}
 
@@ -257,7 +256,7 @@ export class ChannelManager {
 		if (this.pluginRegistry) {
 			const filtered = await this.pluginRegistry.runMessageInbound(msg);
 			if (filtered === null) {
-				console.log("[channel] Message dropped by plugin hook");
+				log.channel().info("message dropped by plugin hook");
 				return;
 			}
 		}
@@ -294,7 +293,7 @@ export class ChannelManager {
 
 		// 3. Run agent
 		if (!this.agentRunner) {
-			console.warn("[channel] No agent runner configured");
+			log.channel().warn("no agent runner configured");
 			return;
 		}
 
@@ -322,7 +321,7 @@ export class ChannelManager {
 						messageText = [messageText, transcribedText].filter(Boolean).join("\n");
 					}
 				} catch (err) {
-					console.warn("[channel] STT transcription failed:", err);
+					log.channel().warn({ err }, "stt transcription failed");
 				}
 			}
 		}
@@ -353,32 +352,65 @@ export class ChannelManager {
 
 			// 4. Collect response and send reply
 			const caps = CHANNEL_DOCK[msg.channel] ?? CHANNEL_DOCK.webchat;
+			const retryConfig = this.getConfig?.()?.tools?.retry;
+			const format = caps.supportsMarkdown ? "markdown" : "plain";
+			const replyTo = msg.peer.kind === "group" ? undefined : msg.replyTo;
 			let buffer = "";
 
-			for await (const event of events) {
-				if (event.type === "delta" && event.text) {
-					buffer += event.text;
-				} else if (event.type === "error" && event.message) {
-					buffer += `\n\n[Error: ${event.message}]`;
-				}
-			}
+			if (caps.blockStreaming && adapter) {
+				// Block streaming: send chunks incrementally as agent generates
+				const blockMinChars = Math.min(300, Math.floor(caps.maxTextLength * 0.6));
 
-			// Send reply in chunks
-			if (buffer.trim()) {
-				if (adapter) {
+				for await (const event of events) {
+					if (event.type === "delta" && event.text) {
+						buffer += event.text;
+						// Send block when buffer reaches threshold
+						if (buffer.length >= blockMinChars) {
+							const toSend = buffer.slice(0, caps.maxTextLength);
+							buffer = buffer.slice(toSend.length);
+							await sendWithRetry(
+								adapter,
+								msg.peer,
+								{ text: toSend, format, replyTo, threadId: msg.threadId },
+								retryConfig,
+							);
+						}
+					} else if (event.type === "error" && event.message) {
+						buffer += `\n\n[Error: ${event.message}]`;
+					}
+				}
+				// Flush remaining buffer
+				if (buffer.trim()) {
+					await sendWithRetry(
+						adapter,
+						msg.peer,
+						{ text: buffer, format, replyTo, threadId: msg.threadId },
+						retryConfig,
+					);
+				}
+			} else {
+				// Traditional mode: buffer all then send
+				for await (const event of events) {
+					if (event.type === "delta" && event.text) {
+						buffer += event.text;
+					} else if (event.type === "error" && event.message) {
+						buffer += `\n\n[Error: ${event.message}]`;
+					}
+				}
+				if (buffer.trim() && adapter) {
 					const chunks = chunkText(buffer, caps.maxTextLength);
 					for (const chunk of chunks) {
-						await adapter.send(msg.peer, {
-							text: chunk,
-							format: caps.supportsMarkdown ? "markdown" : "plain",
-							replyTo: msg.peer.kind === "group" ? undefined : msg.replyTo,
-							threadId: msg.threadId,
-						});
+						await sendWithRetry(
+							adapter,
+							msg.peer,
+							{ text: chunk, format, replyTo, threadId: msg.threadId },
+							retryConfig,
+						);
 					}
 				}
 			}
 		} catch (err) {
-			console.error("[channel] Agent execution error:", err);
+			log.channel().error({ err }, "agent execution error");
 		} finally {
 			if (typingTimer) clearInterval(typingTimer);
 		}
@@ -429,4 +461,28 @@ function chunkText(text: string, maxLength: number): string[] {
 	}
 
 	return chunks;
+}
+
+/** Per-channel base delay defaults (matches platform rate limits). */
+const CHANNEL_RETRY_DEFAULTS: Record<string, Partial<RetryConfig>> = {
+	telegram: { baseDelayMs: 400 },
+	discord: { baseDelayMs: 500 },
+	slack: { baseDelayMs: 300 },
+};
+
+/** Send a message to a channel adapter with automatic retry on transient errors. */
+async function sendWithRetry(
+	adapter: ChannelAdapter,
+	peer: import("./types").Peer,
+	payload: import("./types").OutboundMessage,
+	retryConfig?: RetryConfig,
+): Promise<string | null> {
+	if (!retryConfig?.enabled) {
+		return adapter.send(peer, payload);
+	}
+	const channelDefaults = CHANNEL_RETRY_DEFAULTS[adapter.type] ?? {};
+	const merged: RetryConfig = { ...retryConfig, ...channelDefaults };
+	return withRetry(() => adapter.send(peer, payload), merged, {
+		tool: `channel:${adapter.type}:send`,
+	});
 }

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { type CoreMessage, generateText, type LanguageModel, streamText } from "ai";
@@ -12,9 +13,12 @@ import { resolveDataDir } from "../config/store";
 import { ExecutionStore } from "../db/executions";
 import { MemoryStore } from "../db/memories";
 import { SessionStore } from "../db/sessions";
+import { log } from "../logger";
 import type { McpClientManager } from "../mcp/client";
 import type { MediaStore } from "../media";
 import { generateEmbedding } from "../memory/embeddings";
+import { runExtractionPipeline, shouldExtract } from "../pim/extractor";
+import { preheatPim } from "../pim/preheat";
 import type { PluginRegistry } from "../plugins/registry";
 import type { LeakDetector } from "../security/leak-detector";
 import { checkDataFlow, detectInjection, wrapUntrustedContent } from "../security/sanitize";
@@ -59,6 +63,7 @@ export class AgentRuntime {
 	private pluginRegistry?: PluginRegistry;
 	private executionStore = new ExecutionStore();
 	private loopDetector = new LoopDetector();
+	pimStore?: import("../pim/store").PimStore;
 	/** Maps YanClaw sessionKey → Agent SDK session ID (for resume). */
 	private sdkSessionIds = new Map<string, string>();
 	/** Per-session serialization lanes to prevent concurrent execution. */
@@ -106,7 +111,7 @@ export class AgentRuntime {
 				}
 			})
 			.catch((err) => {
-				console.warn("[agent] Failed to generate title:", err.message);
+				log.agent().warn({ err, sessionKey }, "failed to generate title");
 			});
 	}
 
@@ -168,8 +173,14 @@ export class AgentRuntime {
 			preference,
 		} = params;
 
+		// Generate correlationId for tracing this run across logs
+		const correlationId = randomBytes(6).toString("hex");
+		const rlog = log.agent().child({ correlationId, sessionKey, agentId });
+		rlog.info({ channelId, hasImages: !!imageUrls?.length }, "agent run started");
+
 		const agentConfig = config.agents.find((a) => a.id === agentId);
 		if (!agentConfig) {
+			rlog.warn("agent not found");
 			yield { type: "error", sessionKey, message: `Agent "${agentId}" not found` };
 			return;
 		}
@@ -242,7 +253,7 @@ export class AgentRuntime {
 			const contextBudget = config.session.contextBudget;
 			const pruned = this.sessionStore.compact(sessionKey, contextBudget);
 			if (pruned > 0) {
-				console.log(`[agent] Pruned ${pruned} messages from session ${sessionKey}`);
+				log.agent().info({ sessionKey, pruned }, "pruned messages from session");
 			}
 
 			// Load stored messages (history built after model resolution for provider-specific handling)
@@ -283,7 +294,17 @@ export class AgentRuntime {
 						};
 					}
 				} catch (err) {
-					console.warn("[agent] Memory pre-heat failed:", err);
+					log.agent().warn({ err, sessionKey }, "memory pre-heat failed");
+				}
+			}
+
+			// PIM pre-heating: inject relevant structured personal info
+			let pimContext = "";
+			if (config.pim?.enabled && this.pimStore) {
+				try {
+					pimContext = await preheatPim(message, this.pimStore);
+				} catch (err) {
+					log.agent().warn({ err, sessionKey }, "PIM pre-heat failed");
 				}
 			}
 
@@ -308,6 +329,7 @@ export class AgentRuntime {
 				config,
 				mode: promptMode,
 				memoryContext: memoryContext || undefined,
+				pimContext: pimContext || undefined,
 				channelId,
 				workspaceDir: agentConfig.workspaceDir,
 				skillPrompts: skillPrompts?.length ? skillPrompts : undefined,
@@ -362,7 +384,7 @@ export class AgentRuntime {
 				compactionCfg.enabled &&
 				needsCompaction(messages, contextBudget, compactionCfg.triggerRatio)
 			) {
-				console.log(`[agent] Context compaction triggered for session ${sessionKey}`);
+				log.agent().info({ sessionKey }, "context compaction triggered");
 
 				// Resolve compaction model (may differ from chat model)
 				let compactionModel = model;
@@ -400,9 +422,12 @@ export class AgentRuntime {
 
 				if (compaction.compactedCount > 0) {
 					messages = compaction.keptMessages;
-					console.log(
-						`[agent] Compacted ${compaction.compactedCount} messages into summary for session ${sessionKey}`,
-					);
+					log
+						.agent()
+						.info(
+							{ sessionKey, compactedCount: compaction.compactedCount },
+							"compacted messages into summary",
+						);
 				}
 			}
 
@@ -423,6 +448,7 @@ export class AgentRuntime {
 				mcpClientManager: this.mcpClientManager,
 				sessionStore: this.sessionStore,
 				pluginRegistry: this.pluginRegistry,
+				pimStore: config.pim?.enabled ? this.pimStore : undefined,
 			});
 
 			// Stream execution with failure tracking
@@ -458,9 +484,7 @@ export class AgentRuntime {
 							if (this.leakDetector && this.leakDetector.size > 0) {
 								const check = this.leakDetector.scan(fullText + part.textDelta);
 								if (check.leaked) {
-									console.error(
-										`[security] Credential leak detected in LLM output for session ${sessionKey}`,
-									);
+									log.security().error({ sessionKey }, "credential leak detected in LLM output");
 									yield {
 										type: "error",
 										sessionKey,
@@ -489,7 +513,12 @@ export class AgentRuntime {
 							// Loop detection: check for repetitive tool calls
 							const loopCheck = this.loopDetector.check(sessionKey, part.toolName, part.args);
 							if (loopCheck.action === "circuit_break") {
-								console.error(`[agent] ${loopCheck.reason}`);
+								log
+									.agent()
+									.error(
+										{ sessionKey, toolName: part.toolName },
+										loopCheck.reason ?? "loop circuit breaker triggered",
+									);
 								yield {
 									type: "error",
 									sessionKey,
@@ -498,7 +527,12 @@ export class AgentRuntime {
 								return;
 							}
 							if (loopCheck.action === "block") {
-								console.warn(`[agent] ${loopCheck.reason}`);
+								log
+									.agent()
+									.warn(
+										{ sessionKey, toolName: part.toolName },
+										loopCheck.reason ?? "repetitive tool call blocked",
+									);
 								yield {
 									type: "error",
 									sessionKey,
@@ -507,15 +541,23 @@ export class AgentRuntime {
 								return;
 							}
 							if (loopCheck.action === "warn") {
-								console.warn(`[agent] ${loopCheck.reason}`);
+								log
+									.agent()
+									.warn(
+										{ sessionKey, toolName: part.toolName },
+										loopCheck.reason ?? "loop warning",
+									);
 							}
 
 							// Data flow heuristic check before tool execution
 							const flowCheck = checkDataFlow(part.toolName, part.args as Record<string, unknown>);
 							if (flowCheck) {
-								console.warn(
-									`[security] Data flow rule "${flowCheck.rule}" triggered for ${part.toolName} in session ${sessionKey}`,
-								);
+								log
+									.security()
+									.warn(
+										{ sessionKey, toolName: part.toolName, rule: flowCheck.rule },
+										"data flow rule triggered",
+									);
 							}
 
 							// Plugin beforeToolCall hooks
@@ -525,7 +567,12 @@ export class AgentRuntime {
 									input: part.args,
 								});
 								if (hookResult === null) {
-									console.warn(`[plugins] Tool call "${part.toolName}" blocked by plugin hook`);
+									log
+										.plugin()
+										.warn(
+											{ toolName: part.toolName, sessionKey },
+											"tool call blocked by plugin hook",
+										);
 									yield {
 										type: "tool_result",
 										sessionKey,
@@ -558,9 +605,12 @@ export class AgentRuntime {
 							// Check for injection patterns (log warning)
 							const injection = detectInjection(resultStr);
 							if (injection.detected) {
-								console.warn(
-									`[security] Injection pattern detected in ${part.toolName} result for session ${sessionKey}: ${injection.patterns.join(", ")}`,
-								);
+								log
+									.security()
+									.warn(
+										{ sessionKey, toolName: part.toolName, patterns: injection.patterns },
+										"injection pattern detected in tool result",
+									);
 							}
 
 							// Plugin afterToolCall hooks
@@ -612,7 +662,7 @@ export class AgentRuntime {
 							durationMs: Date.now() - streamStartTime,
 						});
 					} catch (err) {
-						console.warn("[agent] Failed to record usage:", err);
+						log.agent().warn({ err, sessionKey, agentId }, "failed to record usage");
 					}
 				}
 			} catch (streamErr) {
@@ -650,6 +700,21 @@ export class AgentRuntime {
 					tokenCount: usage.completionTokens,
 				},
 			]);
+
+			// PIM async extraction — fire-and-forget after reply
+			const pimStore = this.pimStore;
+			if (config.pim?.enabled && config.pim.autoExtract && pimStore && shouldExtract(message)) {
+				const extractModel = config.pim.extractModel
+					? this.modelManager.resolveByIdWithMeta(config.pim.extractModel, config).model
+					: model;
+				const recentMsgs = [`User: ${message}`, ...(fullText ? [`Assistant: ${fullText}`] : [])];
+				const threshold = config.pim.confidenceThreshold;
+				queueMicrotask(() => {
+					runExtractionPipeline(extractModel, recentMsgs, pimStore, {
+						confidenceThreshold: threshold,
+					});
+				});
+			}
 
 			// Auto-generate session title on first exchange
 			const isFirstExchange = storedMessages.length === 0;

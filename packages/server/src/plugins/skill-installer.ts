@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveDataDir } from "../config/store";
+import { log } from "../logger";
 import type { SkillManifest } from "./skill-loader";
 
 /** Install, uninstall, and list skills in ~/.yanclaw/skills/. */
@@ -37,7 +38,12 @@ export class SkillInstaller {
 			throw new Error(`Failed to copy skill: ${proc.stderr.toString()}`);
 		}
 
-		console.log(`[skill] Installed "${manifest.name}" v${manifest.version} from local path`);
+		log
+			.plugin()
+			.info(
+				{ skillName: manifest.name, version: manifest.version, source: "local" },
+				"skill installed",
+			);
 		return manifest;
 	}
 
@@ -85,7 +91,12 @@ export class SkillInstaller {
 				// No package.json, skip
 			}
 
-			console.log(`[skill] Installed "${manifest.name}" v${manifest.version} from git`);
+			log
+				.plugin()
+				.info(
+					{ skillName: manifest.name, version: manifest.version, source: "git" },
+					"skill installed",
+				);
 			return manifest;
 		} catch (err) {
 			// Cleanup temp dir on failure
@@ -125,7 +136,12 @@ export class SkillInstaller {
 			await rm(destDir, { recursive: true, force: true });
 			Bun.spawnSync(["cp", "-r", pkgDir, destDir]);
 
-			console.log(`[skill] Installed "${manifest.name}" v${manifest.version} from npm`);
+			log
+				.plugin()
+				.info(
+					{ skillName: manifest.name, version: manifest.version, source: "npm" },
+					"skill installed",
+				);
 			return manifest;
 		} finally {
 			await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -142,7 +158,7 @@ export class SkillInstaller {
 		}
 
 		await rm(skillDir, { recursive: true, force: true });
-		console.log(`[skill] Uninstalled "${skillId}"`);
+		log.plugin().info({ skillId }, "skill uninstalled");
 	}
 
 	/** List all installed skill manifests. */

@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { version as yanclawVersion } from "../../../../package.json";
+import { log } from "../logger";
 import { detectInjection } from "../security/sanitize";
 import type { PluginDefinition } from "./types";
 
@@ -102,7 +103,7 @@ export class SkillLoader {
 			const parsed = JSON.parse(manifestRaw);
 			manifest = skillManifestSchema.parse(parsed);
 		} catch (err) {
-			console.error(`[skill] Invalid skill.json at ${skillPath}:`, err);
+			log.plugin().error({ err, skillPath }, "invalid skill.json");
 			return null;
 		}
 
@@ -120,7 +121,7 @@ export class SkillLoader {
 		try {
 			await stat(entryPath);
 		} catch {
-			console.error(`[skill] Entry file not found: ${entryPath}`);
+			log.plugin().error({ entryPath }, "skill entry file not found");
 			return null;
 		}
 
@@ -129,7 +130,7 @@ export class SkillLoader {
 			const mod = await import(entryPath);
 			pluginDef = mod.default ?? mod;
 		} catch (err) {
-			console.error(`[skill] Failed to import ${entryPath}:`, err);
+			log.plugin().error({ err, entryPath }, "failed to import skill");
 			return null;
 		}
 
@@ -148,7 +149,7 @@ export class SkillLoader {
 		};
 
 		if (warnings.length > 0) {
-			console.warn(`[skill] "${manifest.name}" loaded with warnings:`, warnings);
+			log.plugin().warn({ skillName: manifest.name, warnings }, "skill loaded with warnings");
 		}
 
 		return skillDef;

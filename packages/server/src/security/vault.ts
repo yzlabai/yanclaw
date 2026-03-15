@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { log } from "../logger";
 
 /** Config field names that typically contain credentials. */
 export const CREDENTIAL_FIELDS = new Set([
@@ -78,7 +79,7 @@ export class CredentialVault {
 		try {
 			return this.decrypt(encrypted);
 		} catch {
-			console.error(`[vault] Failed to decrypt credential: ${name}`);
+			log.security().error({ credential: name }, "failed to decrypt credential");
 			return undefined;
 		}
 	}
@@ -205,11 +206,11 @@ async function getMachineId(): Promise<string> {
 		}
 		const generated = randomBytes(16).toString("hex");
 		await writeFile(fallbackPath, generated, "utf-8");
-		console.warn("[vault] Generated fallback machine ID (platform detection failed)");
+		log.security().warn("generated fallback machine ID (platform detection failed)");
 		return generated;
 	} catch {
 		// Last resort: non-persistent random (vault will break on restart)
-		console.error("[vault] Cannot persist machine ID — vault credentials will be lost on restart");
+		log.security().error("cannot persist machine ID — vault credentials will be lost on restart");
 		return randomBytes(16).toString("hex");
 	}
 }

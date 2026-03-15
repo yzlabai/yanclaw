@@ -79,4 +79,6 @@ export interface ChannelAdapter {
 	onMessage(handler: InboundHandler): Unsubscribe;
 	/** Send typing indicator. Optional — not all platforms support it. */
 	sendTyping?(peer: Peer): Promise<void>;
+	/** Edit a previously sent message. Returns true if successful. */
+	editMessage?(messageId: string, peer: Peer, content: OutboundMessage): Promise<boolean>;
 }

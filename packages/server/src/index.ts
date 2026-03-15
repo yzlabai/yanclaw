@@ -12,6 +12,7 @@ import {
 	startMemoryIndexer,
 	startPlugins,
 } from "./gateway";
+import { initLogger, log } from "./logger";
 
 const { websocket } = createBunWebSocket();
 
@@ -19,6 +20,9 @@ async function main() {
 	// 1. Load config
 	const configStore = await ConfigStore.load();
 	const config = configStore.get();
+
+	// 1.5. Initialize structured logger
+	initLogger(config.gateway.logging);
 
 	// 2. Initialize database
 	initDatabase();
@@ -37,7 +41,7 @@ async function main() {
 		websocket,
 	});
 
-	console.log(`YanClaw Gateway running on http://${hostname}:${server.port}`);
+	log.gateway().info({ hostname, port: server.port }, "YanClaw Gateway started");
 
 	// 5. Start MCP servers
 	await startMcp(gw);
@@ -62,11 +66,11 @@ async function main() {
 
 	// 11. Hot-reload listener
 	configStore.onChange((_newConfig) => {
-		console.log("[gateway] Config reloaded");
+		log.gateway().info("config reloaded");
 	});
 }
 
 main().catch((err) => {
-	console.error("Failed to start gateway:", err);
+	log.gateway().fatal({ err }, "failed to start gateway");
 	process.exit(1);
 });

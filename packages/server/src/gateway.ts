@@ -11,6 +11,8 @@ import { UsageTracker } from "./agents/usage-tracker";
 import { ApprovalManager } from "./approvals";
 import { ChannelManager } from "./channels/manager";
 import { channelRegistry } from "./channels/registry";
+import { ErrorCollector } from "./errors/collector";
+import { log } from "./logger";
 // Import adapters to trigger self-registration side effects
 import "./channels/discord";
 import "./channels/feishu";
@@ -28,6 +30,8 @@ import { MediaStore } from "./media";
 import { SttService } from "./media/stt";
 import { MemoryAutoIndexer } from "./memory";
 import { setEmbeddingModelManager } from "./memory/embeddings";
+import { PimReminder } from "./pim/reminder";
+import { PimStore } from "./pim/store";
 import { PluginLoader, PluginRegistry } from "./plugins";
 import { webKnowledgePlugin } from "./plugins/builtin/web-knowledge";
 import { AnomalyDetector } from "./security/anomaly";
@@ -58,6 +62,9 @@ export interface GatewayContext {
 	heartbeatRunner: HeartbeatRunner;
 	supervisor: AgentSupervisor;
 	taskLoop: TaskLoopController | null;
+	errorCollector: ErrorCollector | null;
+	pimStore: PimStore | null;
+	pimReminder: PimReminder | null;
 }
 
 let ctx: GatewayContext | null = null;
@@ -77,7 +84,16 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		const rawDb = getRawDatabase();
 		auditLogger = new AuditLogger(rawDb);
 	} catch {
-		console.warn("[gateway] Audit logger not available (database not initialized)");
+		log.gateway().warn("audit logger not available (database not initialized)");
+	}
+
+	// Initialize error collector
+	let errorCollector: ErrorCollector | null = null;
+	try {
+		const rawDb = getRawDatabase();
+		errorCollector = new ErrorCollector(rawDb);
+	} catch {
+		log.gateway().warn("error collector not available (database not initialized)");
 	}
 
 	setEmbeddingModelManager(modelManager);
@@ -165,7 +181,38 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		taskLoop.onNotify = (channelId, peerId, message) => {
 			channelManager.sendToChannel(channelId, peerId, message);
 		};
-		console.log("[gateway] Task Loop controller initialized");
+		log.gateway().info("Task Loop controller initialized");
+	}
+
+	// Initialize PIM store and reminder if enabled
+	const pimStore = config.get().pim?.enabled ? new PimStore() : null;
+	let pimReminder: PimReminder | null = null;
+	if (pimStore) {
+		agentRuntime.pimStore = pimStore;
+		log.gateway().info("PIM store initialized");
+
+		// PIM reminder: notify via first connected channel's owner
+		const pimCfg = config.get().pim;
+		if (pimCfg.reminders.enabled) {
+			pimReminder = new PimReminder(
+				pimStore,
+				(msg) => {
+					// Send to first channel's first owner, or log if no channel available
+					const channels = config.get().channels;
+					for (const ch of channels) {
+						for (const acc of ch.accounts) {
+							if (acc.ownerIds.length > 0) {
+								channelManager.sendToChannel(`${ch.type}:${acc.id}`, acc.ownerIds[0], msg);
+								return;
+							}
+						}
+					}
+					log.gateway().info({ msg }, "PIM reminder (no channel target)");
+				},
+				() => config.get().pim,
+			);
+			pimReminder.start();
+		}
 	}
 
 	// Register API keys for leak detection
@@ -215,6 +262,9 @@ export function initGateway(config: ConfigStore): GatewayContext {
 		heartbeatRunner,
 		supervisor,
 		taskLoop,
+		errorCollector,
+		pimStore,
+		pimReminder,
 	};
 
 	return ctx;
@@ -231,12 +281,12 @@ export async function startMcp(gw: GatewayContext): Promise<void> {
 
 	const status = gw.mcpClientManager.getStatus();
 	const connected = Object.values(status).filter((s) => s.status === "connected").length;
-	console.log(`[gateway] MCP: ${connected}/${count} server(s) connected`);
+	log.mcp().info({ connected, total: count }, "MCP servers connected");
 
 	// Hot-reload: watch for mcp config changes
 	gw.config.onChange((newCfg) => {
 		gw.mcpClientManager.reload(newCfg.mcp?.servers ?? {}).catch((err) => {
-			console.error("[mcp] Hot-reload failed:", err);
+			log.mcp().error({ err }, "hot-reload failed");
 		});
 	});
 }
@@ -255,7 +305,7 @@ export async function startPlugins(gw: GatewayContext): Promise<void> {
 
 	const count = gw.pluginRegistry.getAllPlugins().length;
 	if (count > 0) {
-		console.log(`[gateway] ${count} plugin(s) loaded`);
+		log.plugin().info({ count }, "plugins loaded");
 	}
 }
 
@@ -279,7 +329,12 @@ export async function startChannels(gw: GatewayContext): Promise<void> {
 		for (const account of channel.accounts) {
 			const adapter = channelRegistry.create(channel.type, account);
 			if (!adapter) {
-				console.warn(`[channel] Skipping ${channel.type}:${account.id} (missing required config)`);
+				log
+					.channel()
+					.warn(
+						{ type: channel.type, accountId: account.id },
+						"skipping channel (missing required config)",
+					);
 				continue;
 			}
 			gw.channelManager.register(`${channel.type}:${account.id}`, adapter);
@@ -297,7 +352,7 @@ export function startCron(gw: GatewayContext): void {
 	const cfg = gw.config.get();
 	if (cfg.cron.tasks.length > 0) {
 		gw.cronService.start();
-		console.log(`[gateway] Cron scheduler started with ${cfg.cron.tasks.length} task(s)`);
+		log.cron().info({ count: cfg.cron.tasks.length }, "cron scheduler started");
 	}
 
 	// Refresh schedules on config reload
@@ -313,7 +368,7 @@ export function startHeartbeats(gw: GatewayContext): void {
 	if (heartbeatAgents.length === 0) return;
 
 	gw.heartbeatRunner.start();
-	console.log(`[gateway] Heartbeat started for ${heartbeatAgents.length} agent(s)`);
+	log.gateway().info({ count: heartbeatAgents.length }, "heartbeat started");
 
 	// Refresh on config reload
 	gw.config.onChange(() => {
@@ -345,29 +400,29 @@ export function runSessionCleanup(gw: GatewayContext): void {
 
 	// Also clean expired media
 	gw.media.cleanup().catch((err) => {
-		console.error("[gateway] Media cleanup error:", err);
+		log.gateway().error({ err }, "media cleanup error");
 	});
 
 	// Prune old audit logs (same retention as sessions)
 	if (gw.auditLogger) {
 		const pruned = gw.auditLogger.prune(days);
 		if (pruned > 0) {
-			console.log(`[gateway] Pruned ${pruned} audit log entries`);
+			log.gateway().info({ count: pruned }, "pruned audit log entries");
 		}
 	}
 
 	// Prune old usage records
 	const usagePruned = gw.usageTracker.prune(days);
 	if (usagePruned > 0) {
-		console.log(`[gateway] Pruned ${usagePruned} usage records`);
+		log.gateway().info({ count: usagePruned }, "pruned usage records");
 	}
 
 	// Mark any "running" executions as interrupted (server was restarted)
 	const interrupted = gw.executions.markRunningAsInterrupted();
 	if (interrupted > 0) {
-		console.log(
-			`[gateway] Marked ${interrupted} interrupted execution(s) — use /resume to recover`,
-		);
+		log
+			.gateway()
+			.info({ count: interrupted }, "marked interrupted executions — use /resume to recover");
 	}
 	// Prune old completed executions
 	gw.executions.pruneCompleted(days);
@@ -380,7 +435,7 @@ export function runSessionCleanup(gw: GatewayContext): void {
 		if (idleMs) {
 			const resetCount = gw.sessions.resetIdle(idleMs);
 			if (resetCount > 0) {
-				console.log(`[gateway] Auto-reset ${resetCount} idle session(s)`);
+				log.gateway().info({ count: resetCount }, "auto-reset idle sessions");
 			}
 		}
 
@@ -390,7 +445,7 @@ export function runSessionCleanup(gw: GatewayContext): void {
 			if (ms) {
 				const count = gw.sessions.resetIdle(ms);
 				if (count > 0) {
-					console.log(`[gateway] Auto-reset ${count} idle session(s)`);
+					log.gateway().info({ count }, "auto-reset idle sessions");
 				}
 			}
 		}, 30 * 60_000);
@@ -426,7 +481,7 @@ function parseDurationMs(s: string): number | null {
 function scheduleDailyReset(gw: GatewayContext, timeStr: string, timezone: string): void {
 	const [hours, minutes] = timeStr.split(":").map(Number);
 	if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-		console.warn(`[gateway] Invalid dailyResetTime: ${timeStr}`);
+		log.gateway().warn({ timeStr }, "invalid dailyResetTime");
 		return;
 	}
 
@@ -455,16 +510,19 @@ function scheduleDailyReset(gw: GatewayContext, timeStr: string, timezone: strin
 				// Reset all sessions with messages
 				const resetCount = gw.sessions.resetIdle(0); // 0ms = reset all with messages
 				if (resetCount > 0) {
-					console.log(`[gateway] Daily reset: cleared ${resetCount} session(s)`);
+					log.gateway().info({ count: resetCount }, "daily reset: cleared sessions");
 				}
 			}
 			scheduleNext(); // Schedule next day
 		}, msUntilReset);
 		autoResetTimers.push(timer);
 
-		console.log(
-			`[gateway] Daily session reset scheduled at ${timeStr} (${timezone}), next in ${Math.round(msUntilReset / 60_000)}m`,
-		);
+		log
+			.gateway()
+			.info(
+				{ timeStr, timezone, nextInMinutes: Math.round(msUntilReset / 60_000) },
+				"daily session reset scheduled",
+			);
 	};
 
 	scheduleNext();

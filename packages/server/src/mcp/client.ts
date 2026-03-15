@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { McpServerConfig } from "../config/schema";
+import { log } from "../logger";
 
 export interface McpToolInfo {
 	name: string;
@@ -62,7 +63,7 @@ export class McpClientManager {
 				},
 			});
 		} else {
-			console.warn(`[mcp] Server "${name}": no command or url configured, skipping`);
+			log.mcp().warn({ server: name }, "no command or url configured, skipping");
 			return;
 		}
 
@@ -85,15 +86,15 @@ export class McpClientManager {
 
 				// Fetch initial tool list
 				conn.tools = await this.fetchTools(client);
-				console.log(`[mcp] Server "${name}" connected (${conn.tools.length} tools)`);
+				log.mcp().info({ server: name, toolCount: conn.tools.length }, "server connected");
 
 				// Listen for tools/list_changed notification to refresh
 				client.setNotificationHandler({ method: "notifications/tools/list_changed" }, async () => {
 					try {
 						conn.tools = await this.fetchTools(client);
-						console.log(`[mcp] Server "${name}" tools refreshed (${conn.tools.length} tools)`);
+						log.mcp().info({ server: name, toolCount: conn.tools.length }, "tools refreshed");
 					} catch (err) {
-						console.warn(`[mcp] Failed to refresh tools for "${name}":`, err);
+						log.mcp().warn({ err, server: name }, "failed to refresh tools");
 					}
 				});
 
@@ -102,9 +103,12 @@ export class McpClientManager {
 				lastError = err;
 				if (attempt < MAX_RETRIES - 1) {
 					const delay = RETRY_BASE_MS * 2 ** attempt;
-					console.warn(
-						`[mcp] Server "${name}" connect attempt ${attempt + 1} failed, retrying in ${delay}ms`,
-					);
+					log
+						.mcp()
+						.warn(
+							{ server: name, attempt: attempt + 1, retryMs: delay },
+							"connect attempt failed, retrying",
+						);
 					await new Promise((r) => setTimeout(r, delay));
 
 					// Recreate transport for stdio (process may have died)
@@ -124,7 +128,12 @@ export class McpClientManager {
 		}
 
 		conn.status = "error";
-		console.error(`[mcp] Server "${name}" failed after ${MAX_RETRIES} attempts:`, lastError);
+		log
+			.mcp()
+			.error(
+				{ err: lastError, server: name, maxRetries: MAX_RETRIES },
+				"server failed after max attempts",
+			);
 	}
 
 	/** Stop a single MCP server connection. */
@@ -209,7 +218,7 @@ export class McpClientManager {
 		// Stop removed servers
 		for (const name of currentNames) {
 			if (!newNames.has(name)) {
-				console.log(`[mcp] Removing server "${name}"`);
+				log.mcp().info({ server: name }, "removing server");
 				await this.stop(name);
 			}
 		}
@@ -226,7 +235,12 @@ export class McpClientManager {
 				continue; // No change
 			}
 
-			console.log(`[mcp] ${existing ? "Restarting" : "Starting"} server "${name}"`);
+			log
+				.mcp()
+				.info(
+					{ server: name, action: existing ? "restarting" : "starting" },
+					`${existing ? "restarting" : "starting"} server`,
+				);
 			await this.start(name, config);
 		}
 	}

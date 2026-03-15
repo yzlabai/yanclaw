@@ -1,4 +1,5 @@
 import { App } from "@slack/bolt";
+import { log } from "../logger";
 import { CHANNEL_DOCK } from "./dock";
 import { channelRegistry } from "./registry";
 import type {
@@ -138,7 +139,7 @@ export class SlackAdapter implements ChannelAdapter {
 				try {
 					await handler(inbound);
 				} catch (err) {
-					console.error("[slack] Handler error:", err);
+					log.channel().error({ err, accountId: this.id }, "handler error");
 				}
 			}
 		});
@@ -153,7 +154,7 @@ export class SlackAdapter implements ChannelAdapter {
 			const authResult = await this.app.client.auth.test();
 			this.botUserId = authResult.user_id ?? null;
 
-			console.log(`[slack] Bot connected as ${authResult.user} (${this.id})`);
+			log.channel().info({ accountId: this.id, user: authResult.user }, "bot connected");
 			this.status = "connected";
 		} catch (err) {
 			this.status = "error";
@@ -192,7 +193,7 @@ export class SlackAdapter implements ChannelAdapter {
 			);
 			return result.ts ?? null;
 		} catch (err) {
-			console.error("[slack] Send error:", err);
+			log.channel().error({ err, accountId: this.id, peer: peer.id }, "send error");
 			return null;
 		}
 	}

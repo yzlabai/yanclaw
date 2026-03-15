@@ -9,6 +9,7 @@ import type {
 	ProviderConfig,
 	ProviderType,
 } from "../config/schema";
+import { log } from "../logger";
 import { reasoningFetch } from "./reasoning-fetch";
 
 interface ProfileState {
@@ -143,9 +144,12 @@ export class ModelManager {
 
 		if (state.failCount >= this.maxFails) {
 			state.cooldownUntil = Date.now() + this.cooldownMs;
-			console.warn(
-				`[model] Profile ${key} in cooldown for ${this.cooldownMs}ms after ${state.failCount} failures`,
-			);
+			log
+				.agent()
+				.warn(
+					{ profileKey: key, cooldownMs: this.cooldownMs, failCount: state.failCount },
+					"profile in cooldown after failures",
+				);
 		}
 
 		this.profileStates.set(key, state);
@@ -311,7 +315,7 @@ export class ModelManager {
 
 		const available = profiles.filter((p) => this.isAvailable(providerName, p.id));
 		if (available.length === 0) {
-			console.warn(`[model] All ${providerName} profiles in cooldown, using first`);
+			log.agent().warn({ providerName }, "all profiles in cooldown, using first");
 			return profiles[0];
 		}
 		if (available.length === 1) return available[0];

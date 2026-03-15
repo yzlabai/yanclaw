@@ -3,6 +3,7 @@ import type { ApprovalManager } from "../../approvals";
 import type { Config, ToolsConfig } from "../../config/schema";
 import type { MemoryStore } from "../../db/memories";
 import type { SessionStore } from "../../db/sessions";
+import { log } from "../../logger";
 import type { McpClientManager } from "../../mcp/client";
 import type { PluginRegistry } from "../../plugins/registry";
 import {
@@ -14,6 +15,13 @@ import { createCodeExecTool } from "./code-exec";
 import { createDockerShellTool } from "./docker-shell";
 import { createFileEditTool, createFileReadTool, createFileWriteTool } from "./file";
 import { createMemoryDeleteTool, createMemorySearchTool, createMemoryStoreTool } from "./memory";
+import {
+	createPimInspectTool,
+	createPimQueryTool,
+	createPimSaveTool,
+	createPimUpdateTool,
+} from "./pim";
+import { RETRYABLE_TOOLS, withRetry } from "./retry";
 import { checkSafeBin } from "./safe-bins";
 import { createDesktopScreenshotTool } from "./screenshot";
 import {
@@ -26,7 +34,7 @@ import { createWebFetchTool, createWebSearchTool } from "./web";
 
 export type { ToolAuthorizationError, ToolInputError } from "./common";
 
-const TOOL_GROUPS: Record<string, string[]> = {
+export const TOOL_GROUPS: Record<string, string[]> = {
 	"group:exec": ["shell", "code_exec"],
 	"group:file": ["file_read", "file_write", "file_edit"],
 	"group:web": ["web_search", "web_fetch"],
@@ -34,9 +42,10 @@ const TOOL_GROUPS: Record<string, string[]> = {
 	"group:memory": ["memory_store", "memory_search", "memory_delete"],
 	"group:desktop": ["screenshot_desktop"],
 	"group:session": ["session_list", "session_send", "session_history"],
+	"group:pim": ["pim_query", "pim_save", "pim_update", "pim_inspect"],
 };
 
-const OWNER_ONLY_TOOLS = new Set([
+export const OWNER_ONLY_TOOLS = new Set([
 	"shell",
 	"file_write",
 	"file_edit",
@@ -45,6 +54,8 @@ const OWNER_ONLY_TOOLS = new Set([
 	"browser_action",
 	"screenshot_desktop",
 	"session_send",
+	"pim_save",
+	"pim_update",
 ]);
 
 function expandGroups(names: string[]): string[] {
@@ -72,7 +83,7 @@ function matchesPatterns(toolName: string, patterns: string[]): boolean {
 }
 
 /** Capabilities required by each tool. */
-const TOOL_CAPABILITIES: Record<string, string[]> = {
+export const TOOL_CAPABILITIES: Record<string, string[]> = {
 	shell: ["exec:shell"],
 	file_read: ["fs:read"],
 	file_write: ["fs:write"],
@@ -90,10 +101,14 @@ const TOOL_CAPABILITIES: Record<string, string[]> = {
 	session_list: ["session:read"],
 	session_send: ["session:write"],
 	session_history: ["session:read"],
+	pim_query: ["pim:read"],
+	pim_save: ["pim:write"],
+	pim_update: ["pim:write"],
+	pim_inspect: ["pim:read"],
 };
 
 /** Predefined capability presets. */
-const CAPABILITY_PRESETS: Record<string, string[]> = {
+export const CAPABILITY_PRESETS: Record<string, string[]> = {
 	"safe-reader": ["fs:read", "memory:read"],
 	researcher: ["fs:read", "net:http", "memory:read", "memory:write"],
 	developer: [
@@ -104,6 +119,8 @@ const CAPABILITY_PRESETS: Record<string, string[]> = {
 		"net:http",
 		"memory:read",
 		"memory:write",
+		"pim:read",
+		"pim:write",
 	],
 	"full-access": ["*"],
 };
@@ -113,7 +130,7 @@ function resolveCapabilities(caps: string | string[] | undefined): Set<string> |
 	if (typeof caps === "string") {
 		const preset = CAPABILITY_PRESETS[caps];
 		if (!preset) {
-			console.warn(`[tools] Unknown capability preset: ${caps}, treating as full-access`);
+			log.agent().warn({ preset: caps }, "unknown capability preset, treating as full-access");
 			return null;
 		}
 		return new Set(preset);
@@ -191,6 +208,7 @@ export async function createToolset(opts: {
 	mcpClientManager?: McpClientManager;
 	sessionStore?: SessionStore;
 	pluginRegistry?: PluginRegistry;
+	pimStore?: import("../../pim/store").PimStore;
 }) {
 	const { workspaceDir, toolsConfig, agentTools, channelId, isOwner = true } = opts;
 	const timeout = toolsConfig.exec.timeout;
@@ -270,6 +288,22 @@ export async function createToolset(opts: {
 		});
 	}
 
+	// Add PIM tools if pim store is available
+	if (opts.pimStore) {
+		allTools.pim_query = createPimQueryTool({ pimStore: opts.pimStore }) as ReturnType<
+			typeof createShellTool
+		>;
+		allTools.pim_save = createPimSaveTool({ pimStore: opts.pimStore }) as ReturnType<
+			typeof createShellTool
+		>;
+		allTools.pim_update = createPimUpdateTool({ pimStore: opts.pimStore }) as ReturnType<
+			typeof createShellTool
+		>;
+		allTools.pim_inspect = createPimInspectTool({ pimStore: opts.pimStore }) as ReturnType<
+			typeof createShellTool
+		>;
+	}
+
 	// MCP tools — bridge from MCP servers into the toolset
 	if (opts.mcpClientManager) {
 		for (const serverName of opts.mcpClientManager.getConnectedServers()) {
@@ -318,9 +352,7 @@ export async function createToolset(opts: {
 	// Fail-closed: remove shell when approval is required but manager unavailable
 	const { approvalManager } = opts;
 	if (!approvalManager && tools.shell && toolsConfig.exec.ask !== "off") {
-		console.warn(
-			"[tools] Shell tool disabled: approval required but approvalManager not available",
-		);
+		log.agent().warn("shell tool disabled: approval required but approvalManager not available");
 		delete tools.shell;
 	}
 
@@ -355,6 +387,29 @@ export async function createToolset(opts: {
 				);
 			},
 		} as typeof originalShell;
+	}
+
+	// Wrap retryable tools with automatic retry on transient errors
+	if (toolsConfig.retry?.enabled) {
+		const retryConfig = toolsConfig.retry;
+		for (const name of Object.keys(tools)) {
+			if (!RETRYABLE_TOOLS.has(name)) continue;
+			const original = tools[name];
+			tools[name] = {
+				...original,
+				execute: async (args: unknown, execOpts: unknown) => {
+					return withRetry(
+						() =>
+							(original as { execute: (a: unknown, o: unknown) => Promise<unknown> }).execute(
+								args,
+								execOpts,
+							),
+						retryConfig,
+						{ tool: name },
+					);
+				},
+			} as typeof original;
+		}
 	}
 
 	return tools;

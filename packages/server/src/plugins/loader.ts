@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveDataDir } from "../config/store";
+import { log } from "../logger";
 import type { PluginRegistry } from "./registry";
 import { SkillLoader } from "./skill-loader";
 import type { PluginDefinition } from "./types";
@@ -73,7 +74,7 @@ export class PluginLoader {
 
 				await this.loadPlugin(pluginPath, enabled, skills);
 			} catch (err) {
-				console.error(`[plugins] Failed to inspect "${entry}":`, err);
+				log.plugin().error({ err, entry }, "failed to inspect plugin entry");
 			}
 		}
 	}
@@ -91,7 +92,7 @@ export class PluginLoader {
 				// Check if skill is disabled (check both plugins.enabled and plugins.skills)
 				const skillCfg = skills?.[skillDef.id];
 				if (enabled[skillDef.id] === false || skillCfg?.enabled === false) {
-					console.log(`[skill] "${skillDef.name}" is disabled, skipping`);
+					log.plugin().info({ skillName: skillDef.name }, "skill is disabled, skipping");
 					return;
 				}
 
@@ -109,7 +110,7 @@ export class PluginLoader {
 			// Fallback: legacy plugin loading (no skill.json)
 			const entryPath = await this.resolveEntry(pluginPath);
 			if (!entryPath) {
-				console.warn(`[plugins] No entry point found in ${pluginPath}`);
+				log.plugin().warn({ pluginPath }, "no entry point found");
 				return;
 			}
 
@@ -117,13 +118,13 @@ export class PluginLoader {
 			const plugin: PluginDefinition = mod.default ?? mod;
 
 			if (!plugin.id || !plugin.name || !plugin.version) {
-				console.warn(`[plugins] Invalid plugin at ${pluginPath}: missing id/name/version`);
+				log.plugin().warn({ pluginPath }, "invalid plugin: missing id/name/version");
 				return;
 			}
 
 			// Check if plugin is disabled in config
 			if (enabled[plugin.id] === false) {
-				console.log(`[plugins] "${plugin.name}" is disabled, skipping`);
+				log.plugin().info({ pluginName: plugin.name }, "plugin is disabled, skipping");
 				return;
 			}
 
@@ -132,12 +133,12 @@ export class PluginLoader {
 				const { definition, host } = isolatePlugin(plugin, entryPath);
 				this.workerHosts.push(host);
 				this.registry.register(definition);
-				console.log(`[plugins] "${plugin.name}" loaded with Worker isolation`);
+				log.plugin().info({ pluginName: plugin.name }, "plugin loaded with worker isolation");
 			} else {
 				this.registry.register(plugin);
 			}
 		} catch (err) {
-			console.error(`[plugins] Failed to load plugin at "${pluginPath}":`, err);
+			log.plugin().error({ err, pluginPath }, "failed to load plugin");
 		}
 	}
 

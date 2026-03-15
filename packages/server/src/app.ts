@@ -16,12 +16,15 @@ import { mediaRoute } from "./routes/media";
 import { memoryRoute } from "./routes/memory";
 
 import { modelsRoute } from "./routes/models";
+import { pimRoute } from "./routes/pim";
 import { pluginsRoute } from "./routes/plugins";
+import { routingRoute } from "./routes/routing";
 import { sessionsRoute } from "./routes/sessions";
 import { skillsRoute } from "./routes/skills";
 import { sttRoute } from "./routes/stt";
 import { systemRoute } from "./routes/system";
 import { taskLoopRoute } from "./routes/task-loop";
+import { toolsMetadataRoute } from "./routes/tools-metadata";
 import { usageRoute } from "./routes/usage";
 import { wsRoute } from "./routes/ws";
 
@@ -66,6 +69,9 @@ const apiRoutes = app
 	.route("/audit", auditRoute)
 	.route("/usage", usageRoute)
 	.route("/task-loop", taskLoopRoute)
+	.route("/pim", pimRoute)
+	.route("/routing", routingRoute)
+	.route("/tools", toolsMetadataRoute)
 	.route("/ws", wsRoute);
 
 export type AppType = typeof apiRoutes;

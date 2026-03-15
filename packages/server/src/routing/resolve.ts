@@ -132,6 +132,103 @@ export function resolveRoute(config: Config, ctx: RouteContext): ResolvedRoute {
 	};
 }
 
+/** Debug info for a single binding candidate. */
+export interface BindingCandidate {
+	rank: number;
+	score: number;
+	isWinner: boolean;
+	binding: Binding;
+	breakdown: {
+		channel: number;
+		account: number;
+		peer: number;
+		guild: number;
+		group: number;
+		roles: number;
+	};
+}
+
+/** Detailed debug result for route resolution. */
+export interface RouteDebugResult extends ResolvedRoute {
+	candidates: BindingCandidate[];
+	defaultAgent: string;
+	totalBindings: number;
+	matchedBindings: number;
+}
+
+/**
+ * Resolve route with full debug information (score breakdown for all candidates).
+ */
+export function resolveRouteDebug(config: Config, ctx: RouteContext): RouteDebugResult {
+	const { routing } = config;
+	const scored: { binding: Binding; score: number; breakdown: BindingCandidate["breakdown"] }[] =
+		[];
+
+	for (const binding of routing.bindings) {
+		const breakdown = {
+			channel: 0,
+			account: 0,
+			peer: 0,
+			guild: 0,
+			group: 0,
+			roles: 0,
+		};
+
+		// Check match conditions (mirrors bindingScore logic)
+		if (binding.channel && binding.channel !== ctx.channel) continue;
+		if (binding.account && binding.account !== ctx.accountId) continue;
+		if (binding.peer && binding.peer !== ctx.peerId) continue;
+		if (binding.guild && binding.guild !== ctx.guildId) continue;
+		if (binding.group && binding.group !== ctx.groupId) continue;
+		if (
+			binding.roles &&
+			binding.roles.length > 0 &&
+			(!ctx.roles || !binding.roles.some((r) => ctx.roles?.includes(r)))
+		)
+			continue;
+
+		// Score components
+		if (binding.channel) breakdown.channel = 2;
+		if (binding.account) breakdown.account = 2;
+		if (binding.peer) breakdown.peer = 4;
+		if (binding.guild) breakdown.guild = 1;
+		if (binding.group) breakdown.group = 1;
+		if (binding.roles?.length) breakdown.roles = 1;
+
+		let score = Object.values(breakdown).reduce((a, b) => a + b, 0);
+		if (binding.priority !== undefined) score = binding.priority;
+
+		scored.push({ binding, score, breakdown });
+	}
+
+	// Sort by score descending
+	scored.sort((a, b) => b.score - a.score);
+
+	const winner = scored[0];
+	const agentId = winner?.binding.agent ?? routing.default;
+	const dmScope = winner?.binding.dmScope ?? routing.dmScope;
+	const sessionKey = buildSessionKey(agentId, ctx, dmScope);
+
+	const candidates: BindingCandidate[] = scored.map((s, i) => ({
+		rank: i + 1,
+		score: s.score,
+		isWinner: i === 0,
+		binding: s.binding,
+		breakdown: s.breakdown,
+	}));
+
+	return {
+		agentId,
+		sessionKey,
+		dmScope,
+		binding: winner?.binding,
+		candidates,
+		defaultAgent: routing.default,
+		totalBindings: routing.bindings.length,
+		matchedBindings: scored.length,
+	};
+}
+
 /**
  * Resolve a peer's identity across channels using identityLinks.
  * Returns the canonical peer ID if linked, otherwise the original.

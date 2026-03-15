@@ -100,6 +100,7 @@ const agentSchema = z.object({
 		})
 		.default({}),
 	runtime: z.enum(["default", "claude-code", "codex", "gemini"]).default("default"),
+	taskEnabled: z.boolean().default(false),
 	memory: z
 		.object({
 			sharedAccess: z.boolean().default(false),
@@ -186,6 +187,17 @@ const routingSchema = z
 	})
 	.default({});
 
+const retrySchema = z
+	.object({
+		enabled: z.boolean().default(true),
+		attempts: z.number().min(1).max(10).default(3),
+		backoff: z.enum(["exponential", "linear", "fixed"]).default("exponential"),
+		baseDelayMs: z.number().default(1000),
+		maxDelayMs: z.number().default(30000),
+		jitter: z.number().min(0).max(1).default(0.1),
+	})
+	.default({});
+
 const toolsSchema = z
 	.object({
 		policy: z
@@ -267,6 +279,7 @@ const toolsSchema = z
 				}),
 			)
 			.default({}),
+		retry: retrySchema,
 	})
 	.default({});
 
@@ -306,12 +319,27 @@ const mcpSchema = z
 
 // --- Main Config Schema ---
 
+const loggingSchema = z
+	.object({
+		level: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+		file: z
+			.object({
+				enabled: z.boolean().default(true),
+				maxSize: z.number().default(10 * 1024 * 1024),
+				maxFiles: z.number().default(7),
+			})
+			.default({}),
+		pretty: z.boolean().default(true),
+	})
+	.default({});
+
 export const configSchema = z.object({
 	gateway: z
 		.object({
 			port: z.number().default(18789),
 			bind: z.enum(["loopback", "lan"]).default("loopback"),
 			auth: z.object({ token: z.string().optional() }).default({}),
+			logging: loggingSchema,
 		})
 		.default({}),
 
@@ -472,6 +500,23 @@ export const configSchema = z.object({
 		})
 		.default({}),
 
+	pim: z
+		.object({
+			enabled: z.boolean().default(false),
+			autoExtract: z.boolean().default(true),
+			confidenceThreshold: z.number().min(0).max(1).default(0.7),
+			extractModel: z.string().default(""),
+			reminders: z
+				.object({
+					enabled: z.boolean().default(false),
+					taskDeadlineHours: z.number().default(24),
+					followUpDays: z.number().default(7),
+					scheduleMinutes: z.number().default(60),
+				})
+				.default({}),
+		})
+		.default({}),
+
 	security: z
 		.object({
 			vault: z.object({ enabled: z.boolean().default(true) }).default({}),
@@ -554,5 +599,8 @@ export type SystemModels = z.infer<typeof systemModelsSchema>;
 export type McpServerConfig = z.input<typeof mcpServerSchema>;
 export type ChannelEntry = z.infer<typeof channelEntrySchema>;
 export type ChannelAccount = z.infer<typeof channelAccountSchema>;
+export type LoggingConfig = z.infer<typeof loggingSchema>;
+export type RetryConfig = z.infer<typeof retrySchema>;
+export type PimConfig = Config["pim"];
 
 export { agentSchema, bindingSchema };

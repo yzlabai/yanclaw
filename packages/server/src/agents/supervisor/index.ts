@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { nanoid } from "nanoid";
+import { log } from "../../logger";
 import type { AgentEvent } from "../runtime";
 import type { AgentAdapter } from "./adapter";
 import type {
@@ -103,10 +104,9 @@ export class AgentSupervisor {
 				});
 				workDir = config.workDir ? join(worktreePath, config.workDir) : worktreePath;
 			} catch (err) {
-				console.warn(
-					`[supervisor] Failed to create worktree, using original dir:`,
-					err instanceof Error ? err.message : err,
-				);
+				log
+					.agent()
+					.warn({ err, processId, baseDir }, "failed to create worktree, using original dir");
 				worktreePath = undefined;
 			}
 		}
@@ -442,12 +442,12 @@ export class AgentSupervisor {
 
 			// Execute onDone actions
 			this.executeOnDone(processId).catch((err) => {
-				console.warn("[supervisor] onDone failed:", err);
+				log.agent().warn({ err, processId }, "onDone action failed");
 			});
 
 			// Advance any DAGs this process belongs to
 			this.advanceDAGsForProcess(processId).catch((err) => {
-				console.warn("[supervisor] DAG advance failed:", err);
+				log.agent().warn({ err, processId }, "DAG advance failed");
 			});
 		}
 
@@ -545,7 +545,7 @@ export class AgentSupervisor {
 					{ agentId: next.agentId, task, workDir: next.workDir, worktree: next.worktree },
 					agentConfig,
 				).catch((err) => {
-					console.warn(`[supervisor] Failed to spawn follow-up ${next.agentId}:`, err);
+					log.agent().warn({ err, agentId: next.agentId }, "failed to spawn follow-up agent");
 				});
 			}
 		}

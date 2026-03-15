@@ -1,3 +1,4 @@
+import { log } from "../logger";
 import type { ChannelAdapter, ChannelCapabilities } from "./types";
 
 /** Account configuration for creating an adapter. */
@@ -59,7 +60,7 @@ class ChannelRegistry {
 	create(type: string, account: ChannelAccountConfig): ChannelAdapter | null {
 		const reg = this.registrations.get(type);
 		if (!reg) {
-			console.warn(`[channel] Unknown channel type: ${type}`);
+			log.channel().warn({ channelType: type }, "unknown channel type");
 			return null;
 		}
 		return reg.create(account);

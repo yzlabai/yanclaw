@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { approvals } from "../db/schema";
+import { log } from "../logger";
 import { broadcastEvent } from "../routes/ws";
 
 export type ApprovalDecision = "approved" | "denied";
@@ -72,7 +73,7 @@ export class ApprovalManager {
 		// Also notify via channel if configured
 		if (this.channelNotifier) {
 			this.channelNotifier({ approvalId: id, sessionKey, toolName, args }).catch((err) => {
-				console.warn("[approval] Channel notification failed:", err);
+				log.security().warn({ err }, "approval channel notification failed");
 			});
 		}
 

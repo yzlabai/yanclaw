@@ -5,6 +5,7 @@
 import { type CoreMessage, generateText, type LanguageModel } from "ai";
 import type { Config } from "../config/schema";
 import type { MemoryStore } from "../db/memories";
+import { log } from "../logger";
 import { generateEmbedding } from "../memory/embeddings";
 
 export interface CompactionResult {
@@ -127,7 +128,7 @@ ${compactionText}`;
 
 		return { summary, keptMessages, compactedCount: toCompact.length };
 	} catch (err) {
-		console.error("[compaction] Summarization failed:", err);
+		log.agent().error({ err }, "summarization failed");
 		return { summary: "", keptMessages: messages, compactedCount: 0 };
 	}
 }
@@ -199,11 +200,11 @@ ${text.slice(0, 8000)}`,
 		}
 
 		if (stored > 0) {
-			console.log(`[compaction] Flushed ${stored} facts to memory for session ${sessionKey}`);
+			log.agent().info({ sessionKey, stored }, "flushed facts to memory");
 		}
 		return stored;
 	} catch (err) {
-		console.warn("[compaction] Memory flush failed:", err);
+		log.agent().warn({ err }, "memory flush failed");
 		return 0;
 	}
 }

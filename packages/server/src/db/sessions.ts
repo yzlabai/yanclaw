@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { log } from "../logger";
 import { messages, sessions } from "./schema";
 import { getDb, getRawDatabase } from "./sqlite";
 
@@ -282,7 +283,7 @@ export class SessionStore {
 		// Messages cascade-delete via FK
 		const result = db.delete(sessions).where(lt(sessions.updatedAt, cutoff)).run();
 		if (result.changes > 0) {
-			console.log(`[sessions] Pruned ${result.changes} stale session(s) older than ${days} days`);
+			log.db().info({ pruned: result.changes, days }, "pruned stale sessions");
 		}
 		return result.changes;
 	}

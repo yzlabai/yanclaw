@@ -11,10 +11,84 @@
 | P2 完善 | ✅ | Slack/Discord 通道、Cron 定时任务、向量记忆、媒体管道、视觉支持、Playwright 浏览器、健康监控、Onboarding |
 | P3 扩展 | ✅ | 插件系统、会话自动清理、Tauri 桌面壳（托盘/IPC/快捷键/更新/安装包） |
 | P4 安全+审批 | ✅ | Bearer Token 认证、执行审批、Docker 沙箱、文件上传、会话导出、记忆预热/自动索引、Worker 隔离、媒体处理、全局快捷键、托盘状态 |
+| v0.13.0 | ✅ | 个人信息系统（PIM）：八元本体、自动抽取、上下文注入、管理页面、主动提醒 |
+| v0.12.0 | ✅ | 工具策略 UI、错误监控面板、路由调试器、Block Streaming |
+| v0.11.0 | ✅ | 结构化日志、工具重试、路由绑定 UI、Agent Hub UX 重设计 |
 | v0.4.0 | ✅ | 桌面截图工具、Claude Code Agent SDK 运行时、双运行时架构、像素风 Logo |
 | v0.3.0 | ✅ | 后台运行（关窗不退出）、托盘菜单增强、优雅退出、CLI 管理工具、Status/Shutdown API |
 
 ## 时间线
+
+### v0.13.0 — 个人信息系统 PIM（2026-03-15）
+
+> 开发计划：`docs/plans/2026-03-15-personal-ontology.md`
+> 功能文档：`docs/pim/README.md`
+
+**个人信息系统（PIM）**——AI 驱动的结构化记忆，基于八元本体模型（人事物地时信息组织账）。
+
+- 八元本体存储：`pim_items` + `pim_links` 表，统一存储 8 类实体和关系
+- 4 个 Agent 工具：`pim_query`、`pim_save`、`pim_update`、`pim_inspect`
+- 14 个 API 端点：实体 CRUD + 关联 + 统计 + 时间线 + 收支汇总 + 关系图
+- 对话自动抽取：Agent 回复后异步提取实体，零摩擦（`pim/extractor.ts`）
+- 上下文注入：Agent 回复前自动拉取相关人/组织/物注入系统提示（`pim/preheat.ts`）
+- 主动提醒：待办到期、日程即将开始、客户久未联系（`pim/reminder.ts`，30min 周期）
+- 管理页面：8 标签页（联系人/组织/日程/待办/收支/时间线/物品/参考）+ 编辑/新建对话框
+- 配置：`pim` 块（enabled、autoExtract、confidenceThreshold、reminders）
+
+### v0.12.0 — UX 与可观测性后续改进（2026-03-15）
+
+> 开发计划：`docs/plans/2026-03-15-ux-and-observability-next.md`
+> 开发日志：`docs/devlogs/2026-03-15-reliability-and-ux.md`
+
+**Feature 1 — 工具策略 UI**
+- Agent CRUD API 暴露 `tools.allow/deny` + `capabilities` 字段
+- 新增 `GET /api/tools/metadata`（工具分组、能力预设、ownerOnly 列表）
+- Agent 编辑器新增"工具权限"折叠区：预设单选（不限制/安全只读/研究员/开发者/自定义）+ 分组 allow/deny 勾选 + 🔐 ownerOnly 标记
+
+**Feature 2 — 错误监控面板**
+- `ErrorCollector`（Ring Buffer + SQLite `error_logs` 表 + 缓冲写入）
+- `GET /api/system/errors` + `GET /api/system/errors/recent` API
+- 新增"监控"页面：统计卡片（24h 错误/警告/总计）+ 模块分布条 + 可筛选错误列表 + 30s 自动刷新
+
+**Feature 3 — 路由调试器**
+- `resolveRouteDebug()` 返回所有候选绑定 + 得分分解
+- `GET /api/routing/test?debug=true` 增强端点
+- Channels 页面"测试路由"对话框：输入频道/用户 → 显示排名候选 + 得分分解
+
+**Feature 5 — Block Streaming**
+- Channel Manager 双模式发送（blockStreaming=true 边生成边发 / false 传统缓存）
+- Telegram/Discord adapter 新增 `editMessage()` 方法
+
+### v0.11.0 — Agent 可靠性与用户体验（2026-03-15）
+
+> 分析文档：`docs/product-analysis-agent-reliability.md`
+> 开发计划：`docs/plans/2026-03-15-agent-reliability-and-ux.md`
+> OpenClaw 对比：`docs/agent-comparison-vs-openclaw.md`
+
+**Phase 1 — 结构化日志系统**
+- Pino JSON 日志 + 文件轮转（`~/.yanclaw/logs/`）+ pretty-print 开发模式
+- 10 个模块 logger（gateway/agent/channel/routing/security/plugin/mcp/cron/config/db）
+- 171 条 console.* 调用迁移到结构化日志
+- Agent 运行级 correlationId 跨日志追踪
+- 配置：`gateway.logging`（level, file.enabled/maxSize/maxFiles, pretty）
+
+**Phase 2 — 工具调用重试机制**
+- 瞬态错误自动重试（429/502/503/504/ECONNRESET/ETIMEDOUT 等）
+- 永久错误直接返回（401/403/404/400）
+- 指数退避 + 10% 抖动 + Retry-After 头解析
+- 幂等工具自动重试（web_fetch/web_search/memory_search/browser_*）
+- 频道投递重试（Telegram 400ms / Discord 500ms / Slack 300ms 基础延迟）
+- 配置：`tools.retry`（enabled, attempts, backoff, baseDelayMs, maxDelayMs, jitter）
+
+**Phase 3 — 路由绑定 UI**
+- 新增 `/api/routing` CRUD API（bindings 增删 + 路由测试端点）
+- Channels 页面每个频道卡片内嵌路由规则（默认 Agent + 自定义绑定 + 添加/删除）
+- Onboarding 添加频道时自动绑定 main Agent
+- 完成页面显示绑定摘要
+
+**Phase 4 — Agent Hub UX 重设计**
+- Agents → "AI 助手"、Agent Hub → "任务"（侧边栏重命名）
+- Agent 新增 `taskEnabled` 字段 + 卡片"可执行任务"标记 + 编辑器开关
 
 ### v0.4.0 — 桌面截图 + Claude Code 运行时（2026-03-11）
 

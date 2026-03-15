@@ -1,4 +1,5 @@
 import type { ChannelManager } from "../../channels/manager";
+import { log } from "../../logger";
 import type { AgentSupervisor } from "./index";
 import type { SupervisorEvent } from "./types";
 
@@ -30,7 +31,7 @@ export class AgentHubNotifier {
 			if (!text) return;
 
 			this.send(text).catch((err) => {
-				console.warn("[agent-hub-notifier] Failed to send notification:", err);
+				log.agent().warn({ err }, "failed to send hub notification");
 			});
 		});
 	}
@@ -107,7 +108,7 @@ export class AgentHubNotifier {
 		// channelKey format: "telegram:bot_id" or adapter key
 		const adapter = this.channelManager.getAdapter(channelKey);
 		if (!adapter) {
-			console.warn(`[agent-hub-notifier] Channel adapter not found: ${channelKey}`);
+			log.agent().warn({ channelKey }, "channel adapter not found for notification");
 			return;
 		}
 
@@ -115,7 +116,7 @@ export class AgentHubNotifier {
 		// e.g., "telegram:bot_prod#-1001234567890"
 		const hashIdx = channelKey.indexOf("#");
 		if (hashIdx === -1) {
-			console.warn("[agent-hub-notifier] notifyChannel must include peer ID: 'adapterKey#peerId'");
+			log.agent().warn({ channelKey }, "notifyChannel must include peer ID: 'adapterKey#peerId'");
 			return;
 		}
 
@@ -124,7 +125,7 @@ export class AgentHubNotifier {
 
 		const realAdapter = this.channelManager.getAdapter(adapterKey);
 		if (!realAdapter) {
-			console.warn(`[agent-hub-notifier] Channel adapter not found: ${adapterKey}`);
+			log.agent().warn({ adapterKey }, "channel adapter not found for notification");
 			return;
 		}
 

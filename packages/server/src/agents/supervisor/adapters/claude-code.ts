@@ -1,5 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { nanoid } from "nanoid";
+import { log } from "../../../logger";
 import { mapToAgentEvent, type SdkMessage } from "../../claude-code-runtime";
 import type { AgentEvent } from "../../runtime";
 import type { AdapterSpawnOptions, AdapterSpawnResult, AgentAdapter } from "../adapter";
@@ -43,11 +44,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 		// Run the query in the background — it drives the entire session
 		this.runQuery(options, cc).catch((err) => {
 			const message = err instanceof Error ? err.message : String(err);
-			console.error(
-				"[claude-code-adapter] Query failed:",
-				message,
-				err instanceof Error ? err.stack : "",
-			);
+			log.agent().error({ err, sessionKey: this.sessionKey }, "claude-code query failed");
 			this.emitEvent({
 				type: "error",
 				sessionKey: this.sessionKey,

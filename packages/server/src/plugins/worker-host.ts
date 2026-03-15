@@ -1,5 +1,6 @@
 import { Worker } from "node:worker_threads";
 import { nanoid } from "nanoid";
+import { log } from "../logger";
 import type { PluginDefinition, PluginToolDef } from "./types";
 
 interface WorkerRequest {
@@ -70,14 +71,16 @@ export class PluginWorkerHost {
 
 		this.worker.on("message", (msg: WorkerResponse & { type?: string }) => {
 			if (msg.type === "ready") {
-				console.log(`[plugins] Worker for "${this.pluginId}" ready`);
+				log.plugin().info({ pluginId: this.pluginId }, "worker ready");
 				return;
 			}
 			if (msg.type === "error") {
-				console.error(
-					`[plugins] Worker "${this.pluginId}" init error:`,
-					(msg as unknown as { error: string }).error,
-				);
+				log
+					.plugin()
+					.error(
+						{ pluginId: this.pluginId, error: (msg as unknown as { error: string }).error },
+						"worker init error",
+					);
 				return;
 			}
 
@@ -93,7 +96,7 @@ export class PluginWorkerHost {
 		});
 
 		this.worker.on("error", (err) => {
-			console.error(`[plugins] Worker "${this.pluginId}" error:`, err);
+			log.plugin().error({ err, pluginId: this.pluginId }, "worker error");
 			// Reject all pending requests on worker error
 			for (const [, p] of this.pending) {
 				p.reject(new Error(`Worker error: ${err.message}`));
@@ -103,7 +106,9 @@ export class PluginWorkerHost {
 
 		this.worker.on("exit", (code) => {
 			if (code !== 0) {
-				console.warn(`[plugins] Worker "${this.pluginId}" exited with code ${code}`);
+				log
+					.plugin()
+					.warn({ pluginId: this.pluginId, exitCode: code }, "worker exited with non-zero code");
 			}
 			this.worker = null;
 			// Reject all pending
@@ -141,9 +146,9 @@ export class PluginWorkerHost {
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				this.pending.delete(id);
-				console.warn(
-					`[plugins] Worker "${this.pluginId}" tool "${toolName}" timed out, terminating`,
-				);
+				log
+					.plugin()
+					.warn({ pluginId: this.pluginId, toolName }, "worker tool call timed out, terminating");
 				this.worker?.terminate();
 				reject(new Error("Worker tool call timed out"));
 			}, 30_000);

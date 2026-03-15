@@ -4,6 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Config } from "../config/schema";
 import type { MemoryStore } from "../db/memories";
+import { log } from "../logger";
 import { generateEmbedding } from "./embeddings";
 
 const TEXT_EXTENSIONS = new Set([
@@ -56,17 +57,17 @@ export class MemoryAutoIndexer {
 					const filePath = join(dir, filename);
 					if (event === "rename" || event === "change") {
 						this.indexFile(filePath).catch((err) => {
-							console.warn(`[memory-indexer] Failed to index ${filename}:`, err.message);
+							log.agent().warn({ err, filename }, "failed to index file");
 						});
 					}
 				});
 				this.watchers.push(watcher);
-				console.log(`[memory-indexer] Watching ${dir}`);
+				log.agent().info({ dir }, "memory indexer watching directory");
 
 				// Initial scan
 				await this.scanDirectory(dir);
 			} catch {
-				console.warn(`[memory-indexer] Directory not found: ${dir}`);
+				log.agent().warn({ dir }, "memory indexer directory not found");
 			}
 		}
 	}
@@ -77,7 +78,7 @@ export class MemoryAutoIndexer {
 			w.close();
 		}
 		this.watchers = [];
-		console.log("[memory-indexer] Stopped");
+		log.agent().info("memory indexer stopped");
 	}
 
 	private resolveDirs(): string[] {
@@ -99,7 +100,7 @@ export class MemoryAutoIndexer {
 				await this.indexFile(filePath);
 			}
 		} catch (err) {
-			console.warn(`[memory-indexer] Scan failed for ${dir}:`, err);
+			log.agent().warn({ err, dir }, "memory indexer scan failed");
 		}
 	}
 
@@ -142,7 +143,7 @@ export class MemoryAutoIndexer {
 			});
 
 			this.indexed.add(filePath);
-			console.log(`[memory-indexer] Indexed: ${filename}`);
+			log.agent().info({ filename }, "memory indexer indexed file");
 		} catch {
 			// File may have been deleted between detection and read
 		}
