@@ -44,6 +44,7 @@ describe("agent config — claude-code runtime", () => {
 				},
 			],
 		});
+		// biome-ignore lint/style/noNonNullAssertion: test assertion on known config
 		const cc = config.agents[0].claudeCode!;
 		expect(cc.allowedTools).toEqual(["Read", "Edit", "Write", "Bash", "Glob", "Grep"]);
 		expect(cc.permissionMode).toBe("acceptEdits");

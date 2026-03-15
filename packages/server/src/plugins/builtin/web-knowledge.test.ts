@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { webKnowledgePlugin } from "./web-knowledge";
 
 describe("webKnowledgePlugin", () => {
+	const hooks = webKnowledgePlugin.hooks as NonNullable<typeof webKnowledgePlugin.hooks>;
+	const afterToolCall = hooks.afterToolCall as NonNullable<typeof hooks.afterToolCall>;
+
 	it("has correct metadata", () => {
 		expect(webKnowledgePlugin.id).toBe("web-knowledge");
 		expect(webKnowledgePlugin.version).toBe("1.0.0");
@@ -11,16 +14,12 @@ describe("webKnowledgePlugin", () => {
 	});
 
 	it("ignores non-web_fetch tool calls", async () => {
-		const afterToolCall = webKnowledgePlugin.hooks?.afterToolCall!;
-
 		// Should not throw for unrelated tool calls
 		await afterToolCall({ name: "shell", input: {} }, "some output");
 		await afterToolCall({ name: "file_read", input: {} }, "file content");
 	});
 
 	it("ignores short or error results", async () => {
-		const afterToolCall = webKnowledgePlugin.hooks?.afterToolCall!;
-
 		// Short content
 		await afterToolCall({ name: "web_fetch", input: { url: "https://x.com" } }, "short");
 
@@ -31,7 +30,6 @@ describe("webKnowledgePlugin", () => {
 	});
 
 	it("ignores results without URL (non-readability output)", async () => {
-		const afterToolCall = webKnowledgePlugin.hooks?.afterToolCall!;
 		const longText = "a".repeat(200); // Long enough but no URL
 
 		await afterToolCall({ name: "web_fetch", input: {} }, longText);
