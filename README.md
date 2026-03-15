@@ -10,7 +10,7 @@
 
 <a id="english"></a>
 
-A lightweight, security-first, multi-channel AI assistant gateway — inspired by [OpenClaw](https://github.com/nicepkg/openclaw), rebuilt from scratch with a modern stack.
+A lightweight, security-first, multi-channel AI assistant gateway — inspired by [OpenClaw](https://github.com/openclaw/openclaw), rebuilt from scratch with a modern stack.
 
 OpenClaw pioneered the local AI gateway concept with 23+ channel integrations and native clients (SwiftUI for macOS, Kotlin for Android), but relies on Node.js + Express, a custom AI runtime, and platform-specific native code for each OS. YanClaw takes the same core idea and re-implements it with **Bun + Hono + Tauri v2**, focusing on three things: **lightweight** (single ~30MB installer, one codebase for all platforms, zero native deps), **security** (AES-256 credential vault, credential leak detection, prompt injection defense, execution approval, Docker sandbox, audit logging, SSRF prevention, and rate limiting — all built in, not bolted on), and **hackable** (clean monorepo, end-to-end type-safe API via Hono RPC, Zod-validated routes, plugin system with lifecycle hooks — easy to add new channels, tools, or agents without touching core code).
 
