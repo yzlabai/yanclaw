@@ -11,6 +11,7 @@
 | P2 完善 | ✅ | Slack/Discord 通道、Cron 定时任务、向量记忆、媒体管道、视觉支持、Playwright 浏览器、健康监控、Onboarding |
 | P3 扩展 | ✅ | 插件系统、会话自动清理、Tauri 桌面壳（托盘/IPC/快捷键/更新/安装包） |
 | P4 安全+审批 | ✅ | Bearer Token 认证、执行审批、Docker 沙箱、文件上传、会话导出、记忆预热/自动索引、Worker 隔离、媒体处理、全局快捷键、托盘状态 |
+| v0.14.0 | ✅ | 文档整理 + CLI 命令行工具：架构文档、模块文档、CLI/Web/Desktop 分别说明、终端对话 |
 | v0.13.0 | ✅ | 个人信息系统（PIM）：八元本体、自动抽取、上下文注入、管理页面、主动提醒 |
 | v0.12.0 | ✅ | 工具策略 UI、错误监控面板、路由调试器、Block Streaming |
 | v0.11.0 | ✅ | 结构化日志、工具重试、路由绑定 UI、Agent Hub UX 重设计 |
@@ -18,6 +19,24 @@
 | v0.3.0 | ✅ | 后台运行（关窗不退出）、托盘菜单增强、优雅退出、CLI 管理工具、Status/Shutdown API |
 
 ## 时间线
+
+### v0.14.0 — 文档整理 + CLI 命令行工具（2026-03-15）
+
+**文档重构**：
+- 新建 `docs/ARCHITECTURE.md` 整体系统架构文档
+- 新建 `docs/SERVER.md`、`docs/WEB.md`、`docs/DESKTOP.md` 三端说明文档
+- 新建 `docs/modules/` 模块文档：channels、routing、tools、memory、plugins、cron
+- 清理 44 个已完成的 plans/todos 文档，保留 devlogs 作为历史记录
+- 清理 FEATURES.md 已完成清单
+
+**CLI 命令行工具**（`packages/server/src/cli.ts`）：
+- 两层子命令路由框架 + `parseFlags()` 选项解析，零外部依赖
+- `chat` 终端对话：SSE 流式输出、交互式 REPL（readline）、管道 stdin 支持
+- `agents` / `channels` / `sessions` 资源管理命令
+- `config show|get|set|edit` 配置管理
+- `cron list|run`、`memory search|add|delete|stats`、`plugins list`
+- 所有命令支持 `--json` 输出，便于脚本处理
+- 新建 `docs/CLI.md` 用户文档
 
 ### v0.13.0 — 个人信息系统 PIM（2026-03-15）
 
